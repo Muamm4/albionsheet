@@ -22,7 +22,7 @@ export default function AlbionIndex() {
   const [selectedItems, setSelectedItems] = useState<AlbionItem[]>([]);
   const [prices, setPrices] = useState<ItemPrice[]>([]);
   const [loading, setLoading] = useState(false);
-  const [selectedCity, setSelectedCity] = useState<string>('Caerleon');
+  const [selectedCity, setSelectedCity] = useState<string>('Bridgewatch');
 
   // Breadcrumbs para navegação
   const breadcrumbs = [

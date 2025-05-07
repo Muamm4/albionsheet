@@ -26,31 +26,13 @@ use Illuminate\Support\Facades\Log;
  */
 class AlbionController extends Controller
 {
-    /**
-     * Display the Albion Online items price checker page.
-     *
-     * @return \Inertia\Response
-     */
+
     public function index()
     {
         // Passando um objeto de usuário vazio para evitar erros no layout
-        return Inertia::render('Albion/Index', [
-            'auth' => [
-                'user' => [
-                    'name' => 'Visitante',
-                    'email' => '',
-                    'avatar' => null,
-                ]
-            ]
-        ]);
+        return Inertia::render('Albion/Index');
     }
 
-    /**
-     * Display the item detail page.
-     *
-     * @param  Request  $request  A requisição contendo o ID do item
-     * @return \Inertia\Response
-     */
     public function itemDetail(Request $request, $itemId)
     {
         if (!$itemId) {
@@ -58,14 +40,7 @@ class AlbionController extends Controller
         }
         
         return Inertia::render('Albion/ItemDetail', [
-            'itemId' => $itemId,
-            'auth' => [
-                'user' => [
-                    'name' => 'Visitante',
-                    'email' => '',
-                    'avatar' => null,
-                ]
-            ]
+            'itemId' => $itemId
         ]);
     }
 
@@ -76,15 +51,7 @@ class AlbionController extends Controller
      */
     public function favorites()
     {
-        return Inertia::render('Albion/Favorites', [
-            'auth' => [
-                'user' => [
-                    'name' => 'Visitante',
-                    'email' => '',
-                    'avatar' => null,
-                ]
-            ]
-        ]);
+        return Inertia::render('Albion/Favorites');
     }
 
     /**
@@ -94,15 +61,7 @@ class AlbionController extends Controller
      */
     public function calculator()
     {
-        return Inertia::render('Albion/Calculator', [
-            'auth' => [
-                'user' => [
-                    'name' => 'Visitante',
-                    'email' => '',
-                    'avatar' => null,
-                ]
-            ]
-        ]);
+        return Inertia::render('Albion/Calculator');
     }
 
     /**
@@ -112,15 +71,7 @@ class AlbionController extends Controller
      */
     public function blackMarket()
     {
-        return Inertia::render('Albion/BlackMarket', [
-            'auth' => [
-                'user' => [
-                    'name' => 'Visitante',
-                    'email' => '',
-                    'avatar' => null,
-                ]
-            ]
-        ]);
+        return Inertia::render('Albion/BlackMarket');
     }
 
     /**
@@ -194,15 +145,6 @@ class AlbionController extends Controller
         return response()->json($this->generateCraftingInfo($itemId));
     }
 
-    /**
-     * Generate crafting information based on item ID.
-     *
-     * Esta é uma implementação simulada. Em uma aplicação real, essas informações
-     * viriam do banco de dados ou de uma API externa.
-     *
-     * @param  string  $itemId  ID do item
-     * @return array  Informações de crafting
-     */
     private function generateCraftingInfo($itemId)
     {
         // Extrair informações do ID do item

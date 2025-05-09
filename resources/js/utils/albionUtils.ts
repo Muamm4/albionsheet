@@ -76,14 +76,21 @@ export const getItemIconUrl = (itemId: string, size: number = 100, quality: numb
  * 
  * @param searchTerm Termo de busca
  * @param limit Limite de resultados
+ * @param enchantmentLevel Nível de encantamento (opcional)
  * @returns Lista de itens filtrados
  */
-export const searchItems = async (searchTerm: string, limit: number = 10): Promise<AlbionItem[]> => {
+export const searchItems = async (searchTerm: string, limit: number = 10, enchantmentLevel: number = 0): Promise<AlbionItem[]> => {
   if (!searchTerm || searchTerm.length < 3) {
     return [];
   }
 
   try {
+    // Extrair o ID base caso o termo de busca contenha encantamento (@)
+    let cleanSearchTerm = searchTerm;
+    if (searchTerm.includes('@')) {
+      cleanSearchTerm = getBaseItemId(searchTerm);
+    }
+
     // Buscar os dados dos itens do arquivo JSON
     const response = await axios.get('/items.json');
     const items = response.data;
@@ -94,21 +101,32 @@ export const searchItems = async (searchTerm: string, limit: number = 10): Promi
         const ptName = item.LocalizedNames?.['PT-BR']?.toLowerCase() || '';
         const enName = item.LocalizedNames?.['EN-US']?.toLowerCase() || '';
         const uniqueName = item.UniqueName?.toLowerCase() || '';
-        const term_lower = searchTerm.toLowerCase();
+        // Usar o termo de busca limpo (sem encantamento)
+        const term_lower = cleanSearchTerm.toLowerCase();
         
         return ptName.includes(term_lower) || 
                enName.includes(term_lower) || 
                uniqueName.includes(term_lower);
       })
-      .map((item: any) => ({
-        id: item.Index || '',
-        name: item.LocalizedNames?.['EN-US'] || item.LocalizedNames?.['PT-BR'] || item.UniqueName,
-        localizedNames: item.LocalizedNames || {},
-        uniqueName: item.UniqueName
-      }))
+      .map((item: any) => {
+        // Obter o ID base do item
+        const baseItemId = item.UniqueName;
+        
+        // Aplicar encantamento se necessário
+        const uniqueName = enchantmentLevel > 0 ? 
+          applyEnchantmentLevel(baseItemId, enchantmentLevel) : 
+          baseItemId;
+        
+        return {
+          id: item.Index || '',
+          name: item.LocalizedNames?.['EN-US'] || item.LocalizedNames?.['PT-BR'] || uniqueName,
+          localizedNames: item.LocalizedNames || {},
+          uniqueName: uniqueName
+        };
+      })
       .sort((a: AlbionItem, b: AlbionItem) => {
         // Ordenar primeiro pelos itens que começam com o termo de busca
-        const term_lower = searchTerm.toLowerCase();
+        const term_lower = cleanSearchTerm.toLowerCase();
         const aPtName = a.localizedNames['PT-BR']?.toLowerCase() || '';
         const aEnName = a.localizedNames['EN-US']?.toLowerCase() || '';
         const bPtName = b.localizedNames['PT-BR']?.toLowerCase() || '';
@@ -157,7 +175,8 @@ export const searchItems = async (searchTerm: string, limit: number = 10): Promi
  */
 export const fetchItemPrices = async (
   items: string[], 
-  locations: string[] = ['Caerleon']
+  locations: string[] = ['Bridgewatch'],
+  quality: number = 0
 ): Promise<ItemPrice[]> => {
   try {
     // Verificar se há itens para buscar
@@ -170,6 +189,7 @@ export const fetchItemPrices = async (
     const response = await axios.post('/albion/prices', {
       items,
       locations,
+      quality,
     });
     
     // Verificar se a resposta contém dados válidos
@@ -217,6 +237,36 @@ export const getQualityName = (quality: number): string => {
 export const getBaseItemId = (itemId: string): string => {
   if (!itemId) return '';
   return itemId.split('@')[0];
+};
+
+/**
+ * Extrai o tier do item
+ * 
+ * @param itemId ID do item (ex: T4_BAG@2)
+ * @returns Tier do item (ex: 4)
+ */
+export const getItemTier = (itemId: string): number => {
+  if (!itemId || !itemId.startsWith('T')) return 0;
+  const tierStr = itemId.charAt(1);
+  return parseInt(tierStr, 10) || 0;
+};
+
+/**
+ * Altera o tier de um item
+ * 
+ * @param itemId ID do item (ex: T4_BAG@2)
+ * @param tier Novo tier (1-8)
+ * @returns ID do item com o novo tier (ex: T5_BAG@2)
+ */
+export const applyItemTier = (itemId: string, tier: number): string => {
+  if (!itemId || tier < 1 || tier > 8) return itemId;
+  
+  // Remover o tier atual e substituir pelo novo
+  if (itemId.startsWith('T') && itemId.length > 2) {
+    return `T${tier}${itemId.substring(2)}`;
+  }
+  
+  return itemId;
 };
 
 /**

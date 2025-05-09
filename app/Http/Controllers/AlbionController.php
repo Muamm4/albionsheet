@@ -39,48 +39,31 @@ class AlbionController extends Controller
             return redirect()->route('albion.index');
         }
         
+        $item = AlbionCraft::findByUniqueName($itemId);
+        
         return Inertia::render('Albion/ItemDetail', [
-            'itemId' => $itemId
+            'item' => $item,
         ]);
     }
 
-    /**
-     * Display the favorites page.
-     *
-     * @return \Inertia\Response
-     */
     public function favorites()
     {
         return Inertia::render('Albion/Favorites');
     }
 
-    /**
-     * Display the profit calculator page.
-     *
-     * @return \Inertia\Response
-     */
+
     public function calculator()
     {
         return Inertia::render('Albion/Calculator');
     }
 
-    /**
-     * Display the black market comparison page.
-     *
-     * @return \Inertia\Response
-     */
+
     public function blackMarket()
     {
         return Inertia::render('Albion/BlackMarket');
     }
 
-    /**
-     * Get item details from the items.json file.
-     *
-     * @param  Request  $request  A requisição contendo o ID do item
-     * @param  string|null  $itemId  ID do item (opcional, pode vir da rota)
-     * @return \Illuminate\Http\JsonResponse
-     */
+
     public function getItemDetails(Request $request, $itemId = null)
     {
         // Se não vier da rota, tenta pegar do request
@@ -122,12 +105,6 @@ class AlbionController extends Controller
         return response()->json($item);
     }
 
-    /**
-     * Get crafting information for an item.
-     *
-     * @param  string  $itemId  ID do item
-     * @return \Illuminate\Http\JsonResponse
-     */
     public function getCraftingInfo($itemId)
     {
         if (!$itemId) {
@@ -343,7 +320,7 @@ class AlbionController extends Controller
             }
             
             // Albion Online Data API endpoint
-            $apiUrl = "https://www.albion-online-data.com/api/v2/stats/prices/{$itemIds}";
+            $apiUrl = "https://west.albion-online-data.com/api/v2/stats/prices/{$itemIds}";
             
             // Add optional parameters
             $locations = $request->input('locations');

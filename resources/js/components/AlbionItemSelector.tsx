@@ -6,7 +6,9 @@ import {
   getItemIconUrl, 
   getBaseItemId, 
   getEnchantmentLevel,
-  applyEnchantmentLevel
+  applyEnchantmentLevel,
+  getItemTier,
+  applyItemTier
 } from '@/utils/albionUtils';
 import { 
   Select, 
@@ -26,6 +28,7 @@ export default function AlbionItemSelector({ onItemSelect, placeholder = 'Digite
   const [suggestions, setSuggestions] = useState<AlbionItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [enchantmentLevel, setEnchantmentLevel] = useState<string>("0");
+  const [selectedTier, setSelectedTier] = useState<string>("0");
   const suggestionsRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -38,8 +41,33 @@ export default function AlbionItemSelector({ onItemSelect, placeholder = 'Digite
 
     setLoading(true);
     try {
-      const items = await searchItems(term);
-      setSuggestions(items);
+      // Buscar itens base primeiro
+      const baseItems = await searchItems(term);
+      
+      // Aplicar tier e encantamento aos resultados
+      const tier = parseInt(selectedTier, 10);
+      const enchantLevel = parseInt(enchantmentLevel, 10);
+      
+      const modifiedItems = baseItems.map(item => {
+        let modifiedItem = {...item};
+        const baseItemId = getBaseItemId(item.uniqueName);
+        
+        // Aplicar tier se selecionado
+        if (tier > 0) {
+          const itemWithTier = applyItemTier(baseItemId, tier);
+          modifiedItem.uniqueName = itemWithTier;
+        }
+        
+        // Aplicar encantamento se selecionado
+        if (enchantLevel > 0) {
+          const finalItemId = tier > 0 ? modifiedItem.uniqueName : baseItemId;
+          modifiedItem.uniqueName = applyEnchantmentLevel(finalItemId, enchantLevel);
+        }
+        
+        return modifiedItem;
+      });
+      
+      setSuggestions(modifiedItems);
     } catch (error) {
       console.error('Erro ao buscar sugestões:', error);
       setSuggestions([]);
@@ -48,10 +76,12 @@ export default function AlbionItemSelector({ onItemSelect, placeholder = 'Digite
     }
   }, 300);
 
-  // Efeito para buscar sugestões quando o termo de busca mudar
+  // Efeito para buscar sugestões quando o termo de busca, tier ou encantamento mudar
   useEffect(() => {
-    fetchSuggestions(searchTerm);
-  }, [searchTerm]);
+    if (searchTerm.length >= 3) {
+      fetchSuggestions(searchTerm);
+    }
+  }, [searchTerm, selectedTier, enchantmentLevel]);
 
   // Efeito para fechar o dropdown de sugestões quando clicar fora
   useEffect(() => {
@@ -70,23 +100,8 @@ export default function AlbionItemSelector({ onItemSelect, placeholder = 'Digite
 
   // Função para selecionar um item da lista de sugestões
   const selectItem = (item: AlbionItem) => {
-    // Se tiver nível de encantamento selecionado, aplicar ao item
-    const level = parseInt(enchantmentLevel, 10);
-    if (level > 0) {
-      const baseItemId = getBaseItemId(item.uniqueName);
-      const enchantedItemId = applyEnchantmentLevel(baseItemId, level);
-      
-      // Criar uma cópia do item com o ID modificado
-      const enchantedItem: AlbionItem = {
-        ...item,
-        uniqueName: enchantedItemId
-      };
-      
-      onItemSelect(enchantedItem);
-    } else {
-      onItemSelect(item);
-    }
-    
+    // Item já tem o tier e encantamento aplicados das sugestões
+    onItemSelect(item);
     setSearchTerm('');
     setSuggestions([]);
   };
@@ -118,6 +133,23 @@ export default function AlbionItemSelector({ onItemSelect, placeholder = 'Digite
             </div>
           )}
         </div>
+        
+        <Select value={selectedTier} onValueChange={setSelectedTier}>
+          <SelectTrigger className="w-[100px]">
+            <SelectValue placeholder="Tier" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="0">Tier</SelectItem>
+            <SelectItem value="1">T1</SelectItem>
+            <SelectItem value="2">T2</SelectItem>
+            <SelectItem value="3">T3</SelectItem>
+            <SelectItem value="4">T4</SelectItem>
+            <SelectItem value="5">T5</SelectItem>
+            <SelectItem value="6">T6</SelectItem>
+            <SelectItem value="7">T7</SelectItem>
+            <SelectItem value="8">T8</SelectItem>
+          </SelectContent>
+        </Select>
         
         <Select value={enchantmentLevel} onValueChange={setEnchantmentLevel}>
           <SelectTrigger className="w-[120px]">

@@ -1,13 +1,22 @@
 <?php
 
 use App\Http\Controllers\AlbionController;
+use App\Http\Controllers\IndexController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
-Route::get('/', function () {
-    return Inertia::render('welcome');
-})->name('home');
+Route::controller(IndexController::class)->group(function () {
+    Route::get('/', 'index')->name('home');
+});
 
+Route::get('/albion', [AlbionController::class, 'index'])->name('albion.index');
+Route::post('/albion/prices', [AlbionController::class, 'getItemPrices'])->name('albion.prices');
+
+// Novas rotas para detalhes do item e informações de crafting
+Route::get('/albion/item/{itemId}', [AlbionController::class, 'itemDetail'])->name('albion.item.detail');
+Route::get('/albion/crafting', [AlbionController::class, 'getCraftingInfo'])->name('albion.crafting.info');
+
+// API routes para o novo formato
 Route::get('/api/albion/item/{itemId}', [AlbionController::class, 'getItemDetails'])->name('api.albion.item');
 Route::get('/api/albion/crafting/{itemId}', [AlbionController::class, 'getCraftingInfo'])->name('api.albion.crafting');
 Route::get('/api/albion/craftable/{itemId}', [AlbionController::class, 'getItemsToCraft'])->name('api.albion.craftable');

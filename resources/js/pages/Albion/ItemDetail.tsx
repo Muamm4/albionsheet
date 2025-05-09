@@ -1,13 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Link, router } from '@inertiajs/react';
-import axios from 'axios';
-import { 
-  AlbionItem, 
-  CraftingInfo, 
-  ItemPrice, 
-  fetchItemPrices, 
-  formatPrice, 
-  getQualityName, 
+import {
+  formatPrice,
+  getQualityName,
   ALBION_CITIES,
   getItemIconUrl,
   getBaseItemId,
@@ -18,174 +13,122 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import HeadingSmall from '@/components/heading-small';
 
-// Interface para itens craftáveis
-interface CraftableItem {
-  id: string;
-  name: string;
-  materials: Array<{
-    itemId: string;
-    name: string;
-    quantity: number;
-    price: number;
-  }>;
-  craftingInfo: CraftingInfo;
+// Interfaces para a nova estrutura de dados
+interface City {
+  city: string;
+  sell_price_min: number;
+  sell_price_min_date: string;
+  sell_price_max: number;
+  sell_price_max_date: string;
+  buy_price_min: number;
+  buy_price_min_date: string;
+  buy_price_max: number;
+  buy_price_max_date: string;
+}
+
+interface Quality {
+  quality: number;
+  cities: City[];
+}
+
+interface Material {
+  uniquename: string;
+  nicename: string;
+  amount: number;
+  max_return_amount: number;
+  shopcategory?: string;
+  shopsubcategory1?: string;
+  slottype?: string;
+  qualities: Quality[];
+}
+
+interface AlbionItemData {
+  id: number;
+  uniquename: string;
+  nicename: string;
+  qualities: Quality[];
+  materials: Material[];
+  // Outros campos do modelo
+  craftitem1?: string;
+  craftitem1_amount?: string;
+  focus?: string;
+  shopcategory?: string;
+  shopsubcategory1?: string;
+  slottype?: string;
+  [key: string]: any; // Para outros campos dinâmicos
 }
 
 // Componente principal
-export default function ItemDetail({ itemId }: { itemId: string }) {
-  const [item, setItem] = useState<AlbionItem | null>(null);
-  const [prices, setPrices] = useState<ItemPrice[]>([]);
-  const [craftingInfo, setCraftingInfo] = useState<CraftingInfo | null>(null);
-  const [craftableItems, setCraftableItems] = useState<CraftableItem[]>([]);
-  const [loading, setLoading] = useState(true);
+export default function ItemDetail({ item }: { item: AlbionItemData }) {
   const [selectedCity, setSelectedCity] = useState<string>('Bridgewatch');
+  const [selectedQuality, setSelectedQuality] = useState<number>(1);
   const [profitMargin, setProfitMargin] = useState<number>(0);
   const [profitAmount, setProfitAmount] = useState<number>(0);
-  const [priceLoadError, setPriceLoadError] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(false);
 
-  // Buscar dados do item
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        setPriceLoadError(false);
-        
-        // Buscar informações do item
-        const itemResponse = await axios.get(`/api/albion/item/${itemId}`);
-        setItem(itemResponse.data);
+  console.log(selectedCity)
+  console.log(item)
+  // Calcular o custo total dos materiais
+  const calculateTotalMaterialCost = (): number => {
+    if (!item?.materials || item.materials.length === 0) return 0;
 
-        try {
-          // Buscar preços do item para todas as cidades de uma vez
-          const priceData = await fetchItemPrices([itemId], ALBION_CITIES);
-          setPrices(priceData);
-          
-          if (priceData.length === 0) {
-            console.warn('Nenhum dado de preço retornado para o item:', itemId);
-            setPriceLoadError(true);
-          }
-        } catch (priceError) {
-          console.error('Erro ao buscar preços:', priceError);
-          setPriceLoadError(true);
-        }
+    let totalCost = 0;
 
-        // Buscar informações de crafting
-        const craftingResponse = await axios.get(`/api/albion/crafting/${itemId}`);
-        setCraftingInfo(craftingResponse.data);
-        
-        // Buscar itens que podem ser craftados com este item
-        try {
-          const craftableResponse = await axios.get(`/api/albion/craftable/${itemId}`);
-          if (craftableResponse.data && Array.isArray(craftableResponse.data)) {
-            setCraftableItems(craftableResponse.data);
-            
-            // Buscar preços para todos os itens craftáveis de uma vez
-            if (craftableResponse.data.length > 0) {
-              // Coletar todos os IDs de materiais necessários para os itens craftáveis
-              const allMaterialIds = new Set<string>();
-              craftableResponse.data.forEach(item => {
-                // Adicionar o ID do item craftável
-                allMaterialIds.add(item.id);
-                
-                // Adicionar os IDs de todos os materiais
-                if (item.materials && Array.isArray(item.materials)) {
-                  item.materials.forEach(material => {
-                    if (material.itemId) {
-                      allMaterialIds.add(material.itemId);
-                    }
-                  });
-                }
-              });
-              
-              // Converter o Set para array e remover o itemId atual (já temos os preços)
-              const materialIdsToFetch = Array.from(allMaterialIds).filter(id => id !== itemId);
-              
-              if (materialIdsToFetch.length > 0) {
-                try {
-                  const materialPrices = await fetchItemPrices(materialIdsToFetch, ALBION_CITIES);
-                  // Adicionar esses preços ao estado de preços
-                  setPrices(prevPrices => [...prevPrices, ...materialPrices]);
-                } catch (materialPriceError) {
-                  console.error('Erro ao buscar preços dos materiais:', materialPriceError);
-                }
-              }
-            }
-          } else {
-            console.warn('Resposta inválida para itens craftáveis:', craftableResponse.data);
-            setCraftableItems([]);
-          }
-        } catch (craftError) {
-          console.error('Erro ao buscar itens craftáveis:', craftError);
-          setCraftableItems([]);
-        }
-
-        setLoading(false);
-      } catch (error) {
-        console.error('Erro ao buscar dados do item:', error);
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-  }, [itemId]);
-
-  // Calcular margem de lucro quando os dados estiverem disponíveis
-  useEffect(() => {
-    if (prices.length > 0 && craftingInfo) {
-      const cityPrices = prices.filter(price => price.city === selectedCity && price.item_id === itemId);
-      
-      if (cityPrices.length > 0) {
-        const sellPrice = cityPrices[0].sell_price_min || 0;
-        
-        if (sellPrice > 0 && craftingInfo.totalCost > 0) {
-          const profit = sellPrice - craftingInfo.totalCost;
-          setProfitAmount(profit);
-          setProfitMargin((profit / craftingInfo.totalCost) * 100);
-        } else {
-          setProfitAmount(0);
-          setProfitMargin(0);
-        }
-      }
+    for (const material of item.materials) {
+      // Buscar o preço do material na cidade selecionada e com a qualidade selecionada
+      const materialQuality = material.qualities.find(q => q.quality === 1);
+      if (!materialQuality) continue;
+      const cityData = materialQuality.cities.find(c => c.city === selectedCity);
+      if (!cityData) continue;
+      console.log(cityData.sell_price_min)
+      // Usar o preço de compra máximo como referência para o custo
+      const materialPrice = cityData.sell_price_min || 0;
+      totalCost += materialPrice * material.amount;
     }
-  }, [prices, craftingInfo, selectedCity, itemId]);
 
-  // Função para obter o preço de venda mínimo na cidade selecionada
-  const getMinSellPrice = (itemId: string) => {
-    const cityPrices = prices.filter(price => price.city === selectedCity && price.item_id === itemId);
-    return cityPrices.length > 0 ? cityPrices[0].sell_price_min : 0;
+    return totalCost;
+  };
+
+  // Obter o preço de venda mínimo do item na cidade selecionada
+  const getMinSellPrice = (): number => {
+    const quality = item?.qualities?.find(q => q.quality === selectedQuality);
+    if (!quality) return 0;
+
+    const cityData = quality.cities.find(c => c.city === selectedCity);
+    return cityData?.sell_price_min || 0;
   };
 
   // Função para obter a classe CSS baseada na margem de lucro
-  const getProfitClass = () => {
+  const getProfitClass = (): string => {
     if (profitMargin > 20) return "text-green-500";
     if (profitMargin > 0) return "text-yellow-500";
     return "text-red-500";
   };
 
   // Função para formatar a porcentagem
-  const formatPercent = (value: number) => {
+  const formatPercent = (value: number): string => {
     return `${value.toFixed(2)}%`;
   };
 
   // Função para obter a data mais recente de atualização de preço
-  const getLatestPriceDate = (itemId: string, city: string) => {
-    const cityPrices = prices.filter(price => price.city === city && price.item_id === itemId);
-    
-    if (cityPrices.length > 0) {
-      const price = cityPrices[0];
+  const getLatestPriceDate = (quality: Quality): string => {
+    const cityData = quality.cities.find(c => c.city === selectedCity);
+
+    if (cityData) {
       const dates = [
-        price.sell_price_min_date,
-        price.sell_price_max_date,
-        price.buy_price_min_date,
-        price.buy_price_max_date
+        cityData.sell_price_min_date,
+        cityData.sell_price_max_date,
+        cityData.buy_price_min_date,
+        cityData.buy_price_max_date
       ].filter(Boolean);
-      
+
       // Ordenar datas do mais recente para o mais antigo
-      const sortedDates = dates.sort((a, b) => 
+      const sortedDates = dates.sort((a, b) =>
         new Date(b || '').getTime() - new Date(a || '').getTime()
       );
-      
+
       const mostRecentDate = sortedDates.length > 0 ? sortedDates[0] : null;
-      
+
       if (mostRecentDate) {
         return `Atualizado em ${new Date(mostRecentDate).toLocaleString('pt-BR', {
           day: '2-digit',
@@ -196,29 +139,58 @@ export default function ItemDetail({ itemId }: { itemId: string }) {
         })}`;
       }
     }
-    
+
     return 'Data não disponível';
   };
 
-  // Se estiver carregando, mostrar indicador de carregamento
-  if (loading) {
-    return (
-      <AlbionLayout
-        title="Detalhes do Item"
-        description="Carregando informações do item..."
-      >
-        <div className="flex h-64 items-center justify-center">
-          <div className="flex flex-col items-center">
-            <svg className="h-12 w-12 animate-spin text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            <p className="mt-4 text-lg font-medium">Carregando informações do item...</p>
-          </div>
-        </div>
-      </AlbionLayout>
-    );
-  }
+  // Estado para armazenar valores calculados
+  const [calculatedValues, setCalculatedValues] = useState({
+    totalCost: 0,
+    sellPrice: 0,
+    lastUpdated: new Date()
+  });
+
+  // Forçar recalculação quando a cidade ou qualidade mudam
+  useEffect(() => {
+    try {
+      console.log(`Cidade selecionada alterada para: ${selectedCity}`);
+      console.log(`Qualidade selecionada alterada para: ${selectedQuality}`);
+
+      // Obter o preço de venda mínimo do item na cidade selecionada
+      const sellPrice = getMinSellPrice();
+
+      // Calcular o custo total dos materiais
+      const totalCost = calculateTotalMaterialCost();
+
+      console.log(`Preço de venda: ${sellPrice}, Custo total: ${totalCost}`);
+
+      // Atualizar valores calculados
+      setCalculatedValues({
+        totalCost,
+        sellPrice,
+        lastUpdated: new Date()
+      });
+
+      if (sellPrice > 0 && totalCost > 0) {
+        // Calcular o lucro bruto
+        const profit = sellPrice - totalCost;
+        setProfitAmount(profit);
+
+        // Calcular a margem de lucro como porcentagem
+        const margin = (profit / totalCost) * 100;
+        setProfitMargin(margin);
+
+        console.log(`Lucro: ${profit}, Margem: ${margin}%`);
+      } else {
+        setProfitAmount(0);
+        setProfitMargin(0);
+      }
+    } catch (error) {
+      console.error('Erro ao calcular lucro:', error);
+      setProfitAmount(0);
+      setProfitMargin(0);
+    }
+  }, [selectedCity, selectedQuality]);
 
   // Se o item não for encontrado
   if (!item) {
@@ -239,7 +211,7 @@ export default function ItemDetail({ itemId }: { itemId: string }) {
 
   return (
     <AlbionLayout
-      title={item?.localizedNames['PT-BR'] || item?.localizedNames['EN-US'] || itemId}
+      title={item.nicename || item.uniquename}
       description="Detalhes, preços e informações de crafting"
       customBreadcrumbs={[
         {
@@ -247,38 +219,35 @@ export default function ItemDetail({ itemId }: { itemId: string }) {
           href: '/albion',
         },
         {
-          title: item?.localizedNames['PT-BR'] || item?.localizedNames['EN-US'] || itemId,
-          href: `/albion/item/${itemId}`
+          title: item.nicename || item.uniquename,
+          href: `/albion/item/${item.uniquename}`
         }
       ]}
     >
       <div className="space-y-8">
         <div className="flex flex-col items-start gap-6 md:flex-row">
           <div className="flex h-32 w-32 items-center justify-center rounded-lg border border-border bg-muted p-2">
-            <img 
-              src={getItemIconUrl(getBaseItemId(itemId), 128)} 
-              alt={item?.localizedNames['PT-BR'] || itemId} 
+            <img
+              src={getItemIconUrl(getBaseItemId(item.uniquename), 128)}
+              alt={item.nicename || item.uniquename}
               className="h-full w-full object-contain"
               onError={(e) => {
                 (e.target as HTMLImageElement).src = 'https://render.albiononline.com/v1/item/T4_BAG.png?size=128&quality=1';
               }}
             />
           </div>
-          
+
           <div className="space-y-2">
             <h1 className="text-2xl font-bold">
-              {item?.localizedNames['PT-BR'] || getBaseItemId(itemId)}
-              {getEnchantmentLevel(itemId) > 0 && (
+              {item.nicename || item.uniquename}
+              {getEnchantmentLevel(item.uniquename) > 0 && (
                 <span className="ml-2 text-sm font-medium text-blue-500">
-                  Encantamento Nível {getEnchantmentLevel(itemId)}
+                  Encantamento Nível {getEnchantmentLevel(item.uniquename)}
                 </span>
               )}
             </h1>
-            {item?.localizedNames['EN-US'] && item?.localizedNames['PT-BR'] !== item?.localizedNames['EN-US'] && (
-              <p className="text-muted-foreground">{item.localizedNames['EN-US']}</p>
-            )}
-            <p className="text-sm text-muted-foreground">ID: {itemId}</p>
-            
+            <p className="text-sm text-muted-foreground">ID: {item.uniquename}</p>
+
             <div className="mt-4 flex flex-wrap gap-2">
               <Button
                 onClick={() => router.visit('/albion')}
@@ -289,22 +258,21 @@ export default function ItemDetail({ itemId }: { itemId: string }) {
               </Button>
             </div>
           </div>
-          
         </div>
 
         <Separator />
 
         <div className="space-y-6">
-          <HeadingSmall 
-            title="Selecione a Cidade" 
-            description="Escolha a cidade onde deseja verificar os preços" 
+          <HeadingSmall
+            title="Selecione a Cidade"
+            description="Escolha a cidade onde deseja verificar os preços"
           />
-          
+
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
             {ALBION_CITIES.map((city) => (
               <Button
                 key={city}
-                onClick={() => setSelectedCity(city)}
+                onClick={() => setSelectedCity(`${city}`)}
                 variant={selectedCity === city ? "default" : "outline"}
                 size="sm"
                 className="w-full"
@@ -315,13 +283,167 @@ export default function ItemDetail({ itemId }: { itemId: string }) {
           </div>
         </div>
 
+        <div className="space-y-6">
+          <HeadingSmall
+            title="Selecione a Qualidade"
+            description="Escolha a qualidade do item para análise"
+          />
+
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
+            {[1, 2, 3, 4, 5].map((quality) => {
+              // Verificar se existem dados para esta qualidade
+              const hasQualityData = item.qualities.some(q => q.quality === quality);
+
+              return (
+                <Button
+                  key={quality}
+                  onClick={() => setSelectedQuality(quality)}
+                  variant={selectedQuality === quality ? "default" : "outline"}
+                  size="sm"
+                  className="w-full"
+                  disabled={!hasQualityData}
+                >
+                  {getQualityName(quality)}
+                </Button>
+              );
+            })}
+          </div>
+        </div>
+
+        <Separator />
+
+        {/* Seção de Análise de Crafting */}
+        <div className="space-y-6">
+          <HeadingSmall
+            title="Análise de Crafting"
+            description="Análise de custo e lucro potencial para craftar este item"
+          />
+
+          <div className="grid gap-6 md:grid-cols-2">
+            <div className="rounded-lg border border-border p-6">
+              <h3 className="mb-4 text-lg font-medium">Resumo de Crafting</h3>
+
+              {item.materials && item.materials.length > 0 ? (
+                <div className="space-y-4">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Custo Total de Materiais:</span>
+                    <span className="font-medium">{formatPrice(calculatedValues.totalCost)}</span>
+                  </div>
+
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Preço de Venda (Mínimo):</span>
+                    <span className="font-medium">{formatPrice(calculatedValues.sellPrice)}</span>
+                  </div>
+
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Cidade:</span>
+                    <span className="font-medium">{selectedCity}</span>
+                  </div>
+
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Qualidade:</span>
+                    <span className="font-medium">{getQualityName(selectedQuality)}</span>
+                  </div>
+
+                  {item.qualities.length > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Última Atualização:</span>
+                      <div className="text-right text-xs text-muted-foreground">
+                        {getLatestPriceDate(item.qualities.find(q => q.quality === selectedQuality) || item.qualities[0])}
+                      </div>
+                    </div>
+                  )}
+
+                  <Separator />
+
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Lucro Potencial:</span>
+                    <span className={`font-medium ${getProfitClass()}`}>
+                      {formatPrice(profitAmount)} ({formatPercent(profitMargin)})
+                    </span>
+                  </div>
+
+                  <div className="mt-4 rounded-md bg-muted p-3 text-sm text-muted-foreground">
+                    <p>
+                      {profitMargin > 20
+                        ? "✅ Excelente oportunidade de lucro!"
+                        : profitMargin > 0
+                          ? "⚠️ Lucro marginal, considere os custos de taxa do mercado."
+                          : "❌ Prejuízo! Não é recomendado craftar este item para venda."}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-muted-foreground">Este item não pode ser craftado ou não possui informações de crafting disponíveis.</p>
+              )}
+            </div>
+
+            <div className="rounded-lg border border-border p-6">
+              <h3 className="mb-4 text-lg font-medium">Materiais Necessários</h3>
+
+              {!item.materials || item.materials.length === 0 ? (
+                <p className="text-muted-foreground">Este item não pode ser craftado ou não possui informações de crafting disponíveis.</p>
+              ) : (
+                <div className="space-y-4">
+                  {item.materials.map((material, index) => (
+                    <div key={`${material.uniquename}-${index}`} className="flex items-center justify-between">
+                      <div className="flex items-center">
+                        <img
+                          src={getItemIconUrl(getBaseItemId(material.uniquename), 40)}
+                          alt={material.nicename}
+                          className="mr-3 h-8 w-8 rounded object-contain"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = 'https://render.albiononline.com/v1/item/T4_BAG.png?size=40&quality=1';
+                          }}
+                        />
+                        <div>
+                          <div>
+                            {material.nicename}
+                            {getEnchantmentLevel(material.uniquename) > 0 && (
+                              <span className="ml-1 text-xs font-medium text-blue-500">
+                                (Encantamento Nível {getEnchantmentLevel(material.uniquename)})
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-xs text-muted-foreground">{material.uniquename}</div>
+                        </div>
+                      </div>
+                      <div className="flex items-center">
+                        <span className="text-muted-foreground">{material.amount}x</span>
+                        <span className="ml-2 text-sm font-medium">
+                          {formatPrice(
+                            (() => {
+                              const quality = material.qualities.find(q => q.quality === 1);
+                              if (!quality) return 0;
+
+                              const cityData = quality.cities.find(c => c.city === selectedCity);
+                              return cityData?.buy_price_max || 0;
+                            })()
+                          )}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+
+                  <Separator />
+
+                  <div className="flex justify-between">
+                    <span className="font-medium">Total:</span>
+                    <span className="font-medium">{formatPrice(calculatedValues.totalCost)}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
         <Separator />
 
         <div className="space-y-6">
-          <HeadingSmall 
-            title="Preços por Cidade" 
+          <HeadingSmall
+            title="Preços por Cidade"
           />
-          
+
           <div className="rounded-md border border-border">
             <div className="overflow-x-auto">
               <table className="w-full divide-y divide-border">
@@ -335,279 +457,62 @@ export default function ItemDetail({ itemId }: { itemId: string }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border bg-background">
-                  {prices
-                    .filter(price => price.city === selectedCity && price.item_id === itemId)
-                    .map((price, index) => {
-                      // Formatar a data mais recente
-                      const dates = [
-                        price.sell_price_min_date,
-                        price.sell_price_max_date,
-                        price.buy_price_min_date,
-                        price.buy_price_max_date
-                      ].filter(Boolean);
-                      
-                      // Ordenar datas do mais recente para o mais antigo
-                      const sortedDates = dates.sort((a, b) => 
-                        new Date(b || '').getTime() - new Date(a || '').getTime()
-                      );
-                      
-                      const mostRecentDate = sortedDates.length > 0 ? sortedDates[0] : null;
-                      const formattedDate = mostRecentDate 
-                        ? new Date(mostRecentDate).toLocaleString('pt-BR', {
+                  {item.qualities
+                    .filter(quality => quality.quality === selectedQuality)
+                    .flatMap(quality =>
+                      quality.cities.map((cityData, index) => {
+                        // Formatar a data mais recente
+                        const dates = [
+                          cityData.sell_price_min_date,
+                          cityData.sell_price_max_date,
+                          cityData.buy_price_min_date,
+                          cityData.buy_price_max_date
+                        ].filter(Boolean);
+
+                        // Ordenar datas do mais recente para o mais antigo
+                        const sortedDates = dates.sort((a, b) =>
+                          new Date(b || '').getTime() - new Date(a || '').getTime()
+                        );
+
+                        const mostRecentDate = sortedDates.length > 0 ? sortedDates[0] : null;
+                        const formattedDate = mostRecentDate && mostRecentDate !== "0001-01-01T00:00:00"
+                          ? new Date(mostRecentDate).toLocaleString('pt-BR', {
                             day: '2-digit',
                             month: '2-digit',
                             year: 'numeric',
                             hour: '2-digit',
                             minute: '2-digit'
                           })
-                        : 'N/A';
-                      
-                      return (
-                        <tr key={`${price.item_id}-${price.city}-${price.quality}-${index}`} className="hover:bg-muted/50">
-                          <td className="whitespace-nowrap px-6 py-4 text-sm text-muted-foreground">{price.city}</td>
-                          <td className="whitespace-nowrap px-6 py-4 text-sm text-muted-foreground">{getQualityName(price.quality)}</td>
+                          : '-';
+
+                        return (
+                          <tr key={`${cityData.city}-${index}`} className="hover:bg-muted/50">
+                            <td className="whitespace-nowrap px-6 py-4 text-sm text-muted-foreground">{cityData.city}</td>
+                            <td className="whitespace-nowrap px-6 py-4 text-sm text-muted-foreground">{getQualityName(quality.quality)}</td>
                             <td className="whitespace-nowrap px-6 py-4 text-sm text-muted-foreground">
-                              {price.sell_price_min === price.sell_price_max
-                                ? formatPrice(price.sell_price_min)
-                                : `${formatPrice(price.sell_price_min)} ~ ${formatPrice(price.sell_price_max)}`}
+                              {cityData.sell_price_min === cityData.sell_price_max
+                                ? formatPrice(cityData.sell_price_min)
+                                : `${formatPrice(cityData.sell_price_min)} ~ ${formatPrice(cityData.sell_price_max)}`}
                             </td>
                             <td className="whitespace-nowrap px-6 py-4 text-sm text-muted-foreground">
-                              {price.buy_price_min === price.buy_price_max
-                                ? formatPrice(price.buy_price_min)
-                                : `${formatPrice(price.buy_price_min)} ~ ${formatPrice(price.buy_price_max)}`}
+                              {cityData.buy_price_min === cityData.buy_price_max
+                                ? formatPrice(cityData.buy_price_min)
+                                : `${formatPrice(cityData.buy_price_min)} ~ ${formatPrice(cityData.buy_price_max)}`}
                             </td>
                             <td className="whitespace-nowrap px-6 py-4 text-sm text-muted-foreground">
                               {formattedDate}
                             </td>
-                        </tr>
-                      );
-                    })}
+                          </tr>
+                        );
+                      })
+                    )}
                 </tbody>
               </table>
             </div>
           </div>
         </div>
 
-        <Separator />
 
-        <div className="space-y-6">
-          <HeadingSmall 
-            title="Item para Craftar" 
-            description="Itens que podem ser craftados usando este material" 
-          />
-          
-          {loading ? (
-            <div className="rounded-md bg-muted p-4 text-muted-foreground">
-              <p>Carregando itens craftáveis...</p>
-            </div>
-          ) : craftableItems.length === 0 ? (
-            <div className="rounded-md bg-muted p-4 text-muted-foreground">
-              <p>Este item não é usado como material para craftar outros itens.</p>
-            </div>
-          ) : (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {craftableItems.map((craftableItem) => {
-                // Calcular o custo total dos materiais
-                const materialCost = craftableItem.materials.reduce((total, material) => {
-                  // Buscar o preço do material na cidade selecionada
-                  const materialPrice = prices.find(
-                    p => p.item_id === material.itemId && p.city === selectedCity && p.quality === 1
-                  );
-                  
-                  // Usar o preço de venda mínimo, ou o preço de compra mínimo como fallback
-                  const price = materialPrice?.sell_price_min || 
-                               materialPrice?.buy_price_min || 
-                               0;
-                               
-                  // Exibir no console para debug
-                  if (price === 0) {
-                    console.log(`Preço zero para material: ${material.itemId} em ${selectedCity}`, 
-                      { material, materialPrice });
-                  }
-                  
-                  return total + (price * material.quantity);
-                }, 0);
-                
-                // Buscar o preço de venda do item craftável
-                const itemPrice = prices.find(
-                  p => p.item_id === craftableItem.id && p.city === selectedCity && p.quality === 1
-                );
-                
-                const sellPrice = itemPrice?.sell_price_min || 0;
-                const profit = sellPrice - materialCost;
-                const profitMargin = materialCost > 0 ? (profit / materialCost) * 100 : 0;
-                
-                // Determinar a classe CSS com base na margem de lucro
-                let profitClass = "text-red-500";
-                if (profitMargin > 20) profitClass = "text-green-500";
-                else if (profitMargin > 0) profitClass = "text-yellow-500";
-                
-                return (
-                  <div key={craftableItem.id} className="rounded-lg border border-border p-4 hover:bg-muted/50">
-                    <div className="flex items-start gap-3">
-                      <img 
-                        src={getItemIconUrl(getBaseItemId(craftableItem.id), 64)} 
-                        alt={craftableItem.name} 
-                        className="h-12 w-12 rounded object-contain"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).src = 'https://render.albiononline.com/v1/item/T4_BAG.png?size=64&quality=1';
-                        }}
-                      />
-                      <div>
-                        <h3 className="font-medium">
-                          {craftableItem.name || getBaseItemId(craftableItem.id)}
-                          {getEnchantmentLevel(craftableItem.id) > 0 && (
-                            <span className="ml-1 text-xs font-medium text-blue-500">
-                              (Encantamento Nível {getEnchantmentLevel(craftableItem.id)})
-                            </span>
-                          )}
-                        </h3>
-                        
-                        <div className="mt-2 space-y-1 text-sm">
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Custo:</span>
-                            <span>{formatPrice(materialCost)}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Venda:</span>
-                            <span>{formatPrice(sellPrice)}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Lucro:</span>
-                            <span className={profitClass}>
-                              {formatPrice(profit)} ({profitMargin.toFixed(2)}%)
-                            </span>
-                          </div>
-                        </div>
-                        
-                        <div className="mt-3">
-                          <Button
-                            asChild
-                            variant="outline"
-                            size="sm"
-                            className="w-full"
-                          >
-                            <Link href={`/albion/item/${craftableItem.id}`}>
-                              Ver Detalhes
-                            </Link>
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-        
-        {craftingInfo && (
-          <>
-            <Separator />
-            
-            <div className="space-y-6">
-              <HeadingSmall 
-                title="Informações de Crafting" 
-                description="Materiais necessários e análise de custo" 
-              />
-              
-              <div className="grid gap-6 md:grid-cols-2">
-                <div className="rounded-lg border border-border p-6">
-                  <h3 className="mb-4 text-lg font-medium">Informações de Crafting</h3>
-                  
-                  {!craftingInfo ? (
-                    <p className="text-muted-foreground">Carregando informações de crafting...</p>
-                  ) : (
-                    <div className="space-y-4">
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Custo Total de Materiais:</span>
-                        <span className="font-medium">{formatPrice(craftingInfo.totalCost)}</span>
-                      </div>
-                      
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Preço de Venda ({selectedCity}):</span>
-                        <div className="text-right">
-                          <div className="font-medium">{formatPrice(getMinSellPrice(itemId))}</div>
-                          {prices.length > 0 && (
-                            <div className="text-xs text-muted-foreground">
-                              {getLatestPriceDate(itemId, selectedCity)}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      
-                      <Separator />
-                      
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Lucro Potencial:</span>
-                        <span className={`font-medium ${getProfitClass()}`}>
-                          {formatPrice(profitAmount)} ({formatPercent(profitMargin)})
-                        </span>
-                      </div>
-                      
-                      <div className="mt-4 rounded-md bg-muted p-3 text-sm text-muted-foreground">
-                        <p>
-                          {profitMargin > 20 
-                            ? "✅ Excelente oportunidade de lucro!" 
-                            : profitMargin > 0 
-                              ? "⚠️ Lucro marginal, considere os custos de taxa do mercado." 
-                              : "❌ Prejuízo! Não é recomendado craftar este item para venda."}
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-                
-                <div className="rounded-lg border border-border p-6">
-                  <h3 className="mb-4 text-lg font-medium">Materiais Necessários</h3>
-                  
-                  {!craftingInfo || craftingInfo.materials.length === 0 ? (
-                    <p className="text-muted-foreground">Este item não pode ser craftado ou não possui informações de crafting disponíveis.</p>
-                  ) : (
-                    <div className="space-y-4">
-                      {craftingInfo.materials.map((material, index) => (
-                        <div key={`${material.itemId}-${index}`} className="flex items-center justify-between">
-                          <div className="flex items-center">
-                            <img 
-                              src={getItemIconUrl(getBaseItemId(material.itemId), 40)} 
-                              alt={material.name} 
-                              className="mr-3 h-8 w-8 rounded object-contain"
-                              onError={(e) => {
-                                (e.target as HTMLImageElement).src = 'https://render.albiononline.com/v1/item/T4_BAG.png?size=40&quality=1';
-                              }}
-                            />
-                            <div>
-                              <div>
-                                {material.name}
-                                {getEnchantmentLevel(material.itemId) > 0 && (
-                                  <span className="ml-1 text-xs font-medium text-blue-500">
-                                    (Encantamento Nível {getEnchantmentLevel(material.itemId)})
-                                  </span>
-                                )}
-                              </div>
-                              <div className="text-xs text-muted-foreground">{getBaseItemId(material.itemId)}</div>
-                            </div>
-                          </div>
-                          <div className="flex items-center">
-                            <span className="text-muted-foreground">{material.quantity}x</span>
-                            <span className="ml-2 text-sm font-medium">{formatPrice(material.price)}</span>
-                          </div>
-                        </div>
-                      ))}
-                      
-                      <Separator />
-                      
-                      <div className="flex justify-between">
-                        <span className="font-medium">Total:</span>
-                        <span className="font-medium">{formatPrice(craftingInfo.totalCost)}</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </>
-        )}
       </div>
     </AlbionLayout>
   );

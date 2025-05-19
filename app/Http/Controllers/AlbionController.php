@@ -29,7 +29,6 @@ class AlbionController extends Controller
 
     public function index()
     {
-        // Passando um objeto de usuário vazio para evitar erros no layout
         return Inertia::render('Albion/Index');
     }
 
@@ -124,7 +123,6 @@ class AlbionController extends Controller
 
     private function generateCraftingInfo($itemId)
     {
-        // Extrair informações do ID do item
         $parts = explode('_', $itemId);
         
         if (count($parts) < 2) {
@@ -227,12 +225,6 @@ class AlbionController extends Controller
         ];
     }
 
-    /**
-     * Get resource name based on resource ID.
-     *
-     * @param  string  $resourceId  ID do recurso
-     * @return string  Nome do recurso
-     */
     private function getResourceName($resourceId)
     {
         $resources = [
@@ -272,13 +264,6 @@ class AlbionController extends Controller
         return $resources[$resourceId] ?? $resourceId;
     }
 
-    /**
-     * Get artifact name based on item type and level.
-     *
-     * @param  string  $itemType  Tipo do item
-     * @param  int  $level  Nível do artefato
-     * @return string  Nome do artefato
-     */
     private function getArtifactName($itemType, $level)
     {
         $artifacts = [
@@ -299,12 +284,6 @@ class AlbionController extends Controller
         return $artifacts[$key] ?? "Artefato Nível {$level}";
     }
 
-    /**
-     * Get item prices from Albion Online Data API.
-     *
-     * @param  Request  $request  A requisição contendo os IDs dos itens
-     * @return \Illuminate\Http\JsonResponse
-     */
     public function getItemPrices(Request $request)
     {
         try {
@@ -380,90 +359,6 @@ class AlbionController extends Controller
         }
     }
 
-    /**
-     * Insere dados básicos de receitas de crafting no banco de dados.
-     * Esta função é apenas para demonstração.
-     */
-    private function insertBasicCraftingRecipes()
-    {
-        // Exemplos de receitas básicas
-        $recipes = [
-            [
-                'uniquename' => 'T4_BAG',
-                'nicename' => 'Adept\'s Bag',
-                'craftitem1' => 'T4_LEATHER',
-                'craftitem1_amount' => '16',
-                'craftitem2' => 'T4_CLOTH',
-                'craftitem2_amount' => '8',
-            ],
-            [
-                'uniquename' => 'T5_BAG',
-                'nicename' => 'Expert\'s Bag',
-                'craftitem1' => 'T5_LEATHER',
-                'craftitem1_amount' => '32',
-                'craftitem2' => 'T5_CLOTH',
-                'craftitem2_amount' => '16',
-            ],
-        ];
-
-        // Inserir as receitas no banco de dados
-        foreach ($recipes as $recipe) {
-            AlbionCraft::updateOrCreate(
-                ['uniquename' => $recipe['uniquename']],
-                $recipe
-            );
-        }
-    }
-
-    /**
-     * Insere dados básicos de materiais no banco de dados.
-     * Esta função é apenas para demonstração.
-     */
-    private function insertBasicMaterials()
-    {
-        // Exemplos de materiais básicos
-        $materials = [
-            [
-                'uniquename' => 'T4_LEATHER',
-                'tier' => '4',
-                'nice_name' => 'Adept\'s Leather',
-                'shopcategory' => 'resources',
-            ],
-            [
-                'uniquename' => 'T4_CLOTH',
-                'tier' => '4',
-                'nice_name' => 'Adept\'s Cloth',
-                'shopcategory' => 'resources',
-            ],
-            [
-                'uniquename' => 'T5_LEATHER',
-                'tier' => '5',
-                'nice_name' => 'Expert\'s Leather',
-                'shopcategory' => 'resources',
-            ],
-            [
-                'uniquename' => 'T5_CLOTH',
-                'tier' => '5',
-                'nice_name' => 'Expert\'s Cloth',
-                'shopcategory' => 'resources',
-            ],
-        ];
-
-        // Inserir os materiais no banco de dados
-        foreach ($materials as $material) {
-            AlbionMaterial::updateOrCreate(
-                ['uniquename' => $material['uniquename']],
-                $material
-            );
-        }
-    }
-
-    /**
-     * Get items that can be crafted using the given item as material.
-     *
-     * @param  string  $itemId  ID do item
-     * @return \Illuminate\Http\JsonResponse
-     */
     public function getItemsToCraft($itemId)
     {
         if (!$itemId) {

@@ -17,6 +17,13 @@ class ImportAlbionDataFromJson extends Command
     protected $signature = 'albion:import-json';
     protected $description = 'Importa dados do Albion Online a partir de um arquivo JSON';
 
+    private string $jsonFile;
+    private string $jsonFileStats;
+    private $mergeStats;
+
+    private $categories = ["trackingitem","farmableitem","simpleitem","consumableitem","equipmentitem","weapon","mount","furnitureitem","consumablefrominventoryitem","mountskin","journalitem","labourercontract","transformationweapon","crystalleagueitem","siegebanner","killtrophy"];
+    private $ignoreWords = ["NONTRADABLE", "SKIN", "TRASH", "UNIQUE_HIDEOUT","QUESTITEM_TOKEN_SMUGGLER"];
+
     private AlbionPriceService $priceService;
 
     public function __construct(AlbionPriceService $priceService)
@@ -27,370 +34,110 @@ class ImportAlbionDataFromJson extends Command
 
     public function handle(): int
     {
-        $jsonFile = 'database/items.json';
-        
-        if (!File::exists($jsonFile)) {
-            $this->error("Arquivo não encontrado: {$jsonFile}");
+        $this->jsonFile = 'database/item_data.json';
+        $this->jsonFileStats = 'database/items_stats.json';
+
+
+        if (!File::exists($this->jsonFile) || !File::exists($this->jsonFileStats)) {
+            $this->error("Arquivo não encontrado: {$this->jsonFile}");
             return Command::FAILURE;
         }
-        
+
         $this->info('Iniciando importação dos dados do Albion Online a partir do JSON...');
-        
+
         try {
             // Carregar o conteúdo do arquivo JSON
-            $jsonContent = File::get($jsonFile);
+            $jsonContent = File::get($this->jsonFile);
             $jsonData = json_decode($jsonContent, true);
-            
+
             if (json_last_error() !== JSON_ERROR_NONE) {
                 $this->error('Erro ao decodificar o JSON: ' . json_last_error_msg());
                 return Command::FAILURE;
             }
-            
+
             $this->info('JSON carregado com sucesso. Iniciando processamento...');
-            
-            // Array para armazenar todos os itens encontrados
             $items = [];
-            
-            // Lista de chaves que contêm arrays de itens
-            $itemKeys = [
-                'trackingitem',
-                'weapon',
-                'armor',
-                'consumable',
-                'farmableitem',
-                'simpleitem',
-                'consumablefrominventory',
-                'equipmentitem',
-                'furnitureitem',
-                'labourercontract',
-                'mount',
-                'product',
-                'resource',
-                'simple',
-                'tool'
-            ];
-            
-            // Procurar por arrays de itens nas chaves conhecidas
-            foreach ($itemKeys as $key) {
-                if (isset($jsonData['items'][$key])) {
-                    $itemArray = $jsonData['items'][$key];
-                    
-                    // Se não for um array, pular
-                    if (!is_array($itemArray)) {
-                        continue;
-                    }
-                    
-                    // Se for um array associativo (apenas um item), converter para array
-                    if (isset($itemArray['@uniquename'])) {
-                        $itemArray = [$itemArray];
-                    }
-                    
-                    $count = count($itemArray);
-                    $this->info("Encontrados $count itens na chave '$key'");
-                    
-                    // Adicionar itens encontrados à lista
-                    foreach ($itemArray as $item) {
-                        if (isset($item['@uniquename'])) {
-                            $items[] = $item;
+
+            $this->mergeStats();
+            $this->info('Stats mesclados com sucesso. Iniciando processamento de itens...');
+            $bar = $this->output->createProgressBar(count($jsonData));
+            $bar->start();
+            foreach ($jsonData as $item) {
+                try {
+                    foreach ($this->ignoreWords as $word) {
+                        if (stripos($item['UniqueName'], $word) !== false) {
+                            continue 2;
                         }
                     }
-                }
-            }
-            
-            // Também verificar itens no nível raiz (como hideoutitem)
-            foreach ($jsonData as $key => $value) {
-                if (str_ends_with($key, 'item') && is_array($value) && isset($value['@uniquename'])) {
-                    $this->info("Encontrado item na chave raiz: $key");
-                    $items[] = $value;
-                }
-            }
-            
-            $this->info("Total de itens encontrados: " . count($items));
-            
-            // Filtrar apenas itens que são craftables (possuem craftingrequirements)
-            $craftableItems = array_filter($items, function($item) {
-                return isset($item['craftingrequirements']);
-            });
-            
-            $this->info('Total de itens encontrados: ' . count($items));
-            $this->info('Total de itens craftáveis: ' . count($craftableItems));
-            
-            if (empty($craftableItems)) {
-                $this->error('Nenhum item craftável encontrado. Verifique a estrutura do JSON.');
-                return Command::FAILURE;
-            }
-            
-            // Usar apenas itens craftáveis para importação
-            $items = $craftableItems;
-            
-            $this->info('Iniciando importação de ' . count($items) . ' itens craftáveis...');
-            
-            $this->info('Arquivo JSON carregado com sucesso.');
-            $this->info('Total de itens encontrados: ' . count($items));
-            
-            // Verificar conexão com o banco de dados
-            try {
-                DB::connection()->getPdo();
-                $this->info('Conexão com o banco de dados estabelecida com sucesso.');
-            } catch (\Exception $e) {
-                $this->error('Não foi possível conectar ao banco de dados: ' . $e->getMessage());
-                return Command::FAILURE;
-            }
-            
-            $this->info('Iniciando transação de banco de dados...');
-            DB::beginTransaction();
-            
-            $totalItems = count($items);
-            $bar = $this->output->createProgressBar($totalItems);
-            $bar->start();
-            
-            $processedItems = [];
-            $createdCount = 0;
-            $updatedCount = 0;
-            $skippedCount = 0;
-            $errorCount = 0;
-            
-            $this->info('\nCriando itens no banco de dados...');
-            
-            $this->info("\nIniciando processamento de $totalItems itens...");
-            
-            // Primeiro passo: criar todos os itens
-            foreach ($items as $index => $itemData) {
-                if ($index > 0 && $index % 20 === 0) {
-                    $this->info("\nProcessados $index de $totalItems itens...");
-                    $this->info("Itens criados: $createdCount, Pulados: $skippedCount, Erros: $errorCount");
-                    
-                    // Verificar se já salvamos algo no banco
-                    try {
-                        $count = DB::table('items')->count();
-                        $this->info("Total de itens no banco: $count");
-                    } catch (\Exception $e) {
-                        $this->error("Erro ao verificar contagem de itens: " . $e->getMessage());
-                    }
-                }
-                // Verificar se o item tem um uniquename
-                $uniquename = $itemData['@uniquename'] ?? $itemData['@id'] ?? null;
-                if (!$uniquename) {
-                    $this->warn('Item sem identificador único, pulando...');
-                    $skippedCount++;
-                    
-                    // Log detalhado para os primeiros itens pulados
-                    if ($skippedCount <= 5) {
-                        $this->warn("Dados do item sem ID: " . json_encode($itemData, JSON_PRETTY_PRINT));
-                    }
-                    continue;
-                }
-                
-                // Extrair tier e enchantment do uniquename
-                try {
-                    [$tier, $enchantment] = $this->extractTierAndEnchantment($uniquename);
+                    $uniqueNameKey = $item['UniqueName'];
+                    $items[$uniqueNameKey]["uniqueName"] = $item['UniqueName'];
+                    $items[$uniqueNameKey]["name"] = $item['LocalizedNames']['EN-US'] ?? null;
+                    $items[$uniqueNameKey]["description"] = $item['LocalizedDescriptions']['EN-US'] ?? null;
                 } catch (\Exception $e) {
-                    $this->error("Erro ao extrair tier/enchantment para $uniquename: " . $e->getMessage());
-                    $skippedCount++;
-                    $errorCount++;
-                    continue;
+                    $this->error("Erro ao processar item: {$item['UniqueName']}");
+                    $this->error($e->getMessage());
+                    dd($item);
+                }
+                    $itemStats = $this->findItemStats($uniqueNameKey);
+                if($itemStats === []){
+                    // $this->error("Item sem stats: {$uniqueNameKey}");
                 }
                 
-                // Obter o nome amigável do item
-                $nicename = $itemData['@name'] ?? $itemData['@localizedname'] ?? null;
-                
-                // Obter outros atributos
-                $fame = (int)($itemData['@fame'] ?? 0);
-                $focus = (int)($itemData['@focuspoints'] ?? 0);
-                $shopcategory = $itemData['@shopcategory'] ?? null;
-                $shopsubcategory = $itemData['@shopsubcategory'] ?? null;
-                $slottype = $itemData['@slottype'] ?? null;
-                $craftingcategory = $itemData['@craftingcategory'] ?? null;
-                
-                try {
-                    // Verificar se o item já existe e atualizar ou criar
-                    $item = Item::updateOrCreate(
-                        ['uniquename' => $uniquename],
-                        [
-                            'nicename' => $nicename,
-                            'tier' => $tier,
-                            'enchantment' => $enchantment,
-                            'fame' => $fame,
-                            'focus' => $focus,
-                            'shopcategory' => $shopcategory,
-                            'shopsubcategory1' => $shopsubcategory,
-                            'slottype' => $slottype,
-                            'craftingcategory' => $craftingcategory,
-                        ]
-                    );
-                    
-                    if ($item->wasRecentlyCreated) {
-                        $this->info("✅ Novo item criado: $uniquename (ID: $item->id)");
-                        $createdCount++;
-                    } else {
-                        $this->warn("🔄 Item atualizado: $uniquename (ID: $item->id)");
-                        $updatedCount++;
-                    }
-                    
-                    $this->info("Dados: " . json_encode([
-                        'uniquename' => $uniquename,
-                        'tier' => $tier,
-                        'enchantment' => $enchantment
-                    ]));
-                    
-                    $processedItems[$uniquename] = $item;
-                    
-                } catch (\Exception $e) {
-                    $errorMessage = "❌ Erro ao processar o item $uniquename: " . $e->getMessage();
-                    $this->error($errorMessage);
-                    $this->error("Stack trace: " . $e->getTraceAsString());
-                    $errorCount++;
-                    $skippedCount++;
-                    
-                    // Se houver muitos erros, interromper a execução
-                    if ($errorCount > 10) {
-                        $this->error('Muitos erros encontrados. Interrompendo a importação.');
-                        DB::rollBack();
-                        return Command::FAILURE;
-                    }
-                    
-                    continue;
-                }
+                $items[$uniqueNameKey]["shopcategory"] = isset($itemStats['@shopcategory']) ? $itemStats['@shopcategory'] : "sem categoria";
+                $items[$uniqueNameKey]["shopsubcategory1"] = isset($itemStats['@shopsubcategory1']) ? $itemStats['@shopsubcategory1'] : "sem subcategoria";
+                $items[$uniqueNameKey]["tier"] = isset($itemStats['@tier']) ? $itemStats['@tier'] : "sem tier";
+                $items[$uniqueNameKey]["craftingrequirements"] = isset($itemStats['@craftingrequirements']) ? $itemStats['@craftingrequirements'] : "sem requisitos de fabricação";
+               
                 $bar->advance();
             }
-            
             $bar->finish();
             $this->newLine(2);
             
-            // Verificar itens no banco novamente
-            try {
-                $finalCount = DB::table('items')->count();
-                $this->info("\n=== RESUMO DA IMPORTAÇÃO ===");
-                $this->info("Itens processados: $totalItems");
-                $this->info("Itens criados com sucesso: $createdCount");
-                $this->info("Itens pulados: $skippedCount");
-                $this->info("Erros encontrados: $errorCount");
-                $this->info("Total de itens no banco: $finalCount");
-                
-                if ($finalCount === 0 && $createdCount > 0) {
-                    $this->error("ATENÇÃO: Itens foram marcados como criados, mas não foram salvos no banco de dados!");
-                    $this->error("Verifique as permissões do banco de dados e logs de erro.");
-                }
-            } catch (\Exception $e) {
-                $this->error("Erro ao verificar contagem final de itens: " . $e->getMessage());
+            
+           $itemsObject = collect($items);
+           $this->info("Total de itens processados: " . $itemsObject->count());
+
+            $categories = $itemsObject->pluck('shopcategory')->unique()->values()->all();
+            foreach($categories as $category){
+                $this->info("Categoria: " . $category);
             }
-            
-            if (empty($processedItems)) {
-                $this->error('Nenhum item foi processado com sucesso. Verifique os logs para mais detalhes.');
-                
-                // Tentar confirmar se há algum item na tabela
-                try {
-                    $count = DB::table('items')->count();
-                    $this->info("Total de itens na tabela: $count");
-                } catch (\Exception $e) {
-                    $this->error("Erro ao verificar a tabela de itens: " . $e->getMessage());
-                }
-                
-                DB::rollBack();
-                return Command::FAILURE;
+
+            $itemsWithoutCategory = $itemsObject->where('shopcategory', 'sem categoria')->pluck('uniqueName')->values()->all();
+            foreach($itemsWithoutCategory as $item){
+                $this->info("Item sem categoria: " . $item);
             }
-            
-            // Segundo passo: processar os materiais
-            $this->info('\nProcessando materiais...');
-            $bar = $this->output->createProgressBar(count($items));
-            $bar->start();
-            
-            $materialsProcessed = 0;
-            $materialsSkipped = 0;
-            
-            foreach ($items as $index => $itemData) {
-                if ($index > 0 && $index % 100 === 0) {
-                    $this->info("Processados $index itens para materiais...");
-                }
-                $uniquename = $itemData['@uniquename'] ?? $itemData['@id'] ?? null;
-                if (!$uniquename) {
-                    $this->warn('Item sem identificador único ao processar materiais, pulando...');
-                    $materialsSkipped++;
-                    continue;
-                }
-                
-                $item = $processedItems[$uniquename] ?? null;
-                
-                if (!$item) {
-                    $this->warn("Item $uniquename não encontrado nos itens processados, pulando...");
-                    $materialsSkipped++;
-                    continue;
-                }
-                
-                // Processar materiais de crafting
-                if (isset($itemData['craftresource'])) {
-                    // Se for um único material, converter para array
-                    $craftResources = isset($itemData['craftresource']['@uniquename']) 
-                        ? [$itemData['craftresource']] 
-                        : $itemData['craftresource'];
-                    
-                    foreach ($craftResources as $resourceData) {
-                        $materialUniqueName = $resourceData['@uniquename'] ?? null;
-                        if (!$materialUniqueName) {
-                            continue;
-                        }
-                        
-                        // Obter quantidade e retorno máximo
-                        $amount = (int)($resourceData['@count'] ?? 0);
-                        $maxReturnAmount = (int)($resourceData['@maxreturnamount'] ?? 0);
-                        
-                        // Verificar se o material já existe
-                        $material = $processedItems[$materialUniqueName] ?? null;
-                        
-                        // Se o material não existir, criar um novo
-                        if (!$material) {
-                            [$tier, $enchantment] = $this->extractTierAndEnchantment($materialUniqueName);
-                            
-                            $material = Item::create([
-                                'uniquename' => $materialUniqueName,
-                                'nicename' => null, // Não temos o nome amigável no recurso
-                                'tier' => $tier,
-                                'enchantment' => $enchantment,
-                            ]);
-                            
-                            $processedItems[$materialUniqueName] = $material;
-                        }
-                        
-                        // Criar a relação entre o item e o material
-                        ItemMaterial::create([
-                            'item_id' => $item->id,
-                            'material_id' => $material->id,
-                            'amount' => $amount,
-                            'max_return_amount' => $maxReturnAmount,
-                        ]);
-                    }
-                }
-                
-                $bar->advance();
+
+            $itemsWithoutCategory = $itemsObject->where('shopcategory', ' ')->pluck('uniqueName')->values()->all();
+            foreach($itemsWithoutCategory as $item){
+                $this->info("Item sem categoria: " . $item);
             }
-            
-            $bar->finish();
-            $this->newLine(2);
-            
-            // Terceiro passo: atualizar preços
-            $this->info('Atualizando preços dos itens...');
-            
-            // Obter todos os uniquenames dos itens processados
-            $uniqueNames = array_keys($processedItems);
-            
-            // Atualizar preços em lotes para evitar sobrecarga da API
-            $batchSize = 100;
-            $batches = array_chunk($uniqueNames, $batchSize);
-            
-            $bar = $this->output->createProgressBar(count($batches));
-            $bar->start();
-            
-            foreach ($batches as $batch) {
-                $this->priceService->updateItemsPrices($batch);
-                $bar->advance();
-                
-                // Pequena pausa para não sobrecarregar a API
-                sleep(1);
-            }
-            
-            $bar->finish();
-            $this->newLine(2);
-            
+            $this->info("Categorias de itens processados: " . implode(', ', $categories));
+
+
+            // // Terceiro passo: atualizar preços
+            // $this->info('Atualizando preços dos itens...');
+
+            // // Obter todos os uniquenames dos itens processados
+            // $uniqueNames = array_keys($processedItems);
+
+            // // Atualizar preços em lotes para evitar sobrecarga da API
+            // $batchSize = 100;
+            // $batches = array_chunk($uniqueNames, $batchSize);
+
+            // $bar = $this->output->createProgressBar(count($batches));
+            // $bar->start();
+
+            // foreach ($batches as $batch) {
+            //     $this->priceService->updateItemsPrices($batch);
+            //     $bar->advance();
+
+            //     // Pequena pausa para não sobrecarregar a API
+            //     sleep(1);
+            // }
+
+            // $bar->finish();
+            // $this->newLine(2);
+
             DB::commit();
             $this->info('Importação concluída com sucesso!');
             return Command::SUCCESS;
@@ -404,7 +151,7 @@ class ImportAlbionDataFromJson extends Command
             return Command::FAILURE;
         }
     }
-    
+
     /**
      * Extrai o tier e o enchantment do uniquename do item
      * 
@@ -428,5 +175,88 @@ class ImportAlbionDataFromJson extends Command
         }
 
         return [$tier, $enchantment];
+    }
+
+    
+
+    private function findItemStats(string $uniquename, bool $verifyEnchant = false): array
+    {
+        if (strpos($uniquename, '@') !== false) {
+            $uniquenameArray = explode('@', $uniquename);
+            $tier = $uniquenameArray[1];
+            $uniquename = $uniquenameArray[0];
+            $verifyEnchant = true;
+        }
+
+        if(strpos($uniquename, '_EMPTY') !== false || strpos($uniquename, '_FULL') !== false){
+            $uniquename = str_replace('_EMPTY', '', $uniquename);
+            $uniquename = str_replace('_FULL', '', $uniquename);
+        }
+
+        $itemStats = $this->recursiveFindKeyValue('@uniquename', $uniquename, $this->mergeStats);
+
+        if($verifyEnchant && isset($itemStats['enchantments'])){
+            $enchantStats = $this->recursiveFindKeyValue('@enchantmentlevel', $tier, $itemStats['enchantments']);
+            $itemStats['enchantments'] = $enchantStats;
+        }
+        if ($itemStats) {
+            return $itemStats;
+        }
+        return [];
+    }
+
+    private function recursiveFindKeyValue(string $key, string $value, $array, int $maxDepth = 2): array
+    {
+        foreach ($array as $item) {
+            if (isset($item[$key]) && $item[$key] == $value) {
+                return $item;
+            }
+            if ($maxDepth <= 0) {
+                return [];
+            }
+            if (is_array($item) ) {
+                $result = $this->recursiveFindKeyValue($key, $value, $item, $maxDepth - 1);
+                if (!empty($result)) {
+                    return $result;
+                }
+            }
+        }
+        return [];
+    }
+
+    private function mergeStats()
+    {
+
+        $jsonContentStats = File::get($this->jsonFileStats);
+        $jsonStats = collect(json_decode($jsonContentStats, true));
+
+        $mergedStats = collect();
+
+        $this->info("Total de categorias: " . count($jsonStats['items']));
+        $this->info(join(', ', $this->categories));
+
+        $bar = $this->output->createProgressBar(count($jsonStats['items']));
+        $bar->start();
+       
+
+        // Itera sobre cada categoria e adiciona seus itens à Collection mesclada
+        foreach ($jsonStats['items'] as $categoryName => $itemsArray) {
+            
+            if(!in_array($categoryName, $this->categories)){
+                continue;
+            }
+            $bar->advance();
+            // Garante que $itemsArray é um array antes de merge
+            if (is_array($itemsArray) && $categoryName !== '@xmlns:xsi' && $categoryName !== '@xsi:noNamespaceSchemaLocation') {
+                $mergedStats = $mergedStats->merge([$categoryName => $itemsArray]);
+            }
+        }
+
+        $bar->finish();
+        $this->newLine(2);
+
+        $this->mergeStats = $mergedStats;
+
+        return COMMAND::SUCCESS;
     }
 }

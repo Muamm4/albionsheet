@@ -86,7 +86,7 @@ class ImportAlbionDataFromJson extends Command
                 $items[$uniqueNameKey]["shopcategory"] = isset($itemStats['@shopcategory']) ? $itemStats['@shopcategory'] : "sem categoria";
                 $items[$uniqueNameKey]["shopsubcategory1"] = isset($itemStats['@shopsubcategory1']) ? $itemStats['@shopsubcategory1'] : "sem subcategoria";
                 $items[$uniqueNameKey]["tier"] = isset($itemStats['@tier']) ? $itemStats['@tier'] : "sem tier";
-                $items[$uniqueNameKey]["craftingrequirements"] = isset($itemStats['@craftingrequirements']) ? $itemStats['@craftingrequirements'] : "sem requisitos de fabricação";
+                $items[$uniqueNameKey]["craftingrequirements"] = isset($itemStats['craftingrequirements']) ? $itemStats['craftingrequirements'] : "sem requisitos de fabricação";
                
                 $bar->advance();
             }
@@ -102,16 +102,37 @@ class ImportAlbionDataFromJson extends Command
                 $this->info("Categoria: " . $category);
             }
 
+            $this->newLine(2);
+            $this->info("Itens sem categoria:");
             $itemsWithoutCategory = $itemsObject->where('shopcategory', 'sem categoria')->pluck('uniqueName')->values()->all();
             foreach($itemsWithoutCategory as $item){
                 $this->info("Item sem categoria: " . $item);
             }
 
-            $itemsWithoutCategory = $itemsObject->where('shopcategory', ' ')->pluck('uniqueName')->values()->all();
-            foreach($itemsWithoutCategory as $item){
-                $this->info("Item sem categoria: " . $item);
-            }
+            $this->newLine(2);
             $this->info("Categorias de itens processados: " . implode(', ', $categories));
+
+
+            $this->newLine(2);
+            $this->info("Itens sem tier:");
+            $itemsWithoutTier = $itemsObject->where('tier', 'sem tier')->pluck('uniqueName')->values()->all();
+            foreach($itemsWithoutTier as $item){
+                $this->info("Item sem tier: " . $item);
+            }
+
+            $this->newLine(2);
+            $this->info("Itens aleatórios por categoria:");
+            $categories = $itemsObject->pluck('shopcategory')->unique()->values()->all();
+            foreach($categories as $category){
+                $item = $itemsObject->where('shopcategory', $category)->random();
+                $this->info("Categoria: " . $category);
+                $this->info("Item: " . $item['uniqueName']);
+                $this->info("  - Tier: " . $item['tier']);
+                $this->info("  - Requisitos de fabricação: " . json_encode($item['craftingrequirements']));
+                $this->info("  - Subcategoria 1: " . $item['shopsubcategory1']);
+                $this->newLine(2);
+            }
+
 
 
             // // Terceiro passo: atualizar preços

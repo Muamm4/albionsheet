@@ -17,8 +17,6 @@ return new class extends Migration
             $table->string('nicename')->nullable();
             $table->unsignedTinyInteger('tier')->nullable();
             $table->unsignedTinyInteger('enchantment')->default(0);
-            $table->integer('fame')->default(0);
-            $table->integer('focus')->default(0);
             $table->string('shopcategory')->nullable();
             $table->string('shopsubcategory1')->nullable();
             $table->string('slottype')->nullable();

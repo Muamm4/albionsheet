@@ -81,7 +81,7 @@ class Item extends Model
      */
     public function getErrors(): array
     {
-        $validator = \Validator::make($this->attributesToArray(), static::rules(), static::messages());
+        $validator = Validator::make($this->attributesToArray(), static::rules(), static::messages());
         
         if ($validator->fails()) {
             return $validator->errors()->toArray();
@@ -106,6 +106,14 @@ class Item extends Model
         return $this->belongsToMany(Item::class, 'item_materials', 'item_id', 'material_id')
             ->withPivot(['amount', 'max_return_amount'])
             ->withTimestamps();
+    }
+
+    /**
+     * Relacionamento com as estatísticas do item
+     */
+    public function stats(): HasMany
+    {
+        return $this->hasMany(ItemStat::class);
     }
 
     /**

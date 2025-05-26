@@ -70,8 +70,8 @@ class ImportAlbionDataFromJson extends Command
                         }
                     }
                     $uniqueNameKey = $item['UniqueName'];
-                    $items[$uniqueNameKey]["uniqueName"] = $item['UniqueName'];
-                    $items[$uniqueNameKey]["name"] = $item['LocalizedNames']['EN-US'] ?? null;
+                    $items[$uniqueNameKey]["uniquename"] = $item['UniqueName'];
+                    $items[$uniqueNameKey]["nicename"] = $item['LocalizedNames']['EN-US'] ?? null;
                     $items[$uniqueNameKey]["description"] = $item['LocalizedDescriptions']['EN-US'] ?? null;
                 } catch (\Exception $e) {
                     $this->error("Erro ao processar item: {$item['UniqueName']}");
@@ -83,20 +83,20 @@ class ImportAlbionDataFromJson extends Command
                     // $this->error("Item sem stats: {$uniqueNameKey}");
                 }
                 
-                $items[$uniqueNameKey]["shopcategory"] = isset($itemStats['@shopcategory']) ? $itemStats['@shopcategory'] : "sem categoria";
-                $items[$uniqueNameKey]["shopsubcategory1"] = isset($itemStats['@shopsubcategory1']) ? $itemStats['@shopsubcategory1'] : "sem subcategoria";
-                $items[$uniqueNameKey]["itempower"] = isset($itemStats['@itempower']) ? $itemStats['@itempower'] : null;
+                $items[$uniqueNameKey]["shop_category"] = isset($itemStats['@shopcategory']) ? $itemStats['@shopcategory'] : "sem categoria";
+                $items[$uniqueNameKey]["shop_subcategory1"] = isset($itemStats['@shopsubcategory1']) ? $itemStats['@shopsubcategory1'] : "sem subcategoria";
                 $items[$uniqueNameKey]["tier"] = isset($itemStats['@tier']) ? $itemStats['@tier'] : null;
+                $items[$uniqueNameKey]["item_power"] = isset($itemStats['@itempower']) ? $itemStats['@itempower'] : null;
+                $items[$uniqueNameKey]["slot_type"] = isset($itemStats['@slottype']) ? $itemStats['@slottype'] : null;
+                $items[$uniqueNameKey]["crafting_category"] = isset($itemStats['@craftingcategory']) ? $itemStats['@craftingcategory'] : null;
+                $items[$uniqueNameKey]["enchantment_level"] = isset($itemStats['enchantment']['@enchantmentlevel']) ? $itemStats['enchantment']['@enchantmentlevel'] : "0";
                 $items[$uniqueNameKey]["craftingrequirements"] = isset($itemStats['craftingrequirements']) ? $itemStats['craftingrequirements'] : null;
-                $items[$uniqueNameKey]["slottype"] = isset($itemStats['@slottype']) ? $itemStats['@slottype'] : null;
-                $items[$uniqueNameKey]["craftingcategory"] = isset($itemStats['@craftingcategory']) ? $itemStats['@craftingcategory'] : null;
                 $items[$uniqueNameKey]["enchantment"] = isset($itemStats['enchantment']) ? $itemStats['enchantment'] : 0;
-                $items[$uniqueNameKey]["enchantmentLevel"] = isset($itemStats['enchantment']['@enchantmentlevel']) ? $itemStats['enchantment']['@enchantmentlevel'] : "0";
                 $items[$uniqueNameKey]["upgraderequirements"] = isset($itemStats['upgraderequirements']) ? $itemStats['upgraderequirements'] : null;
 
                 // Remove campos que não pertencem ao modelo Item
                 $itemData = collect($items[$uniqueNameKey])
-                    ->except(['itempower', 'craftingrequirements', 'upgraderequirements'])
+                    ->except("enchantment", "craftingrequirements", "upgraderequirements")
                     ->toArray();
 
                 // Cria ou atualiza o item

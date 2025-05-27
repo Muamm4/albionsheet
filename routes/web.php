@@ -1,9 +1,17 @@
 <?php
 
 use App\Http\Controllers\AlbionController;
+use App\Http\Controllers\GoogleAuthController;
 use App\Http\Controllers\IndexController;
+use App\Models\User;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
+use Laravel\Socialite\Facades\Socialite;
+
+Route::get('/auth/google', [GoogleAuthController::class, 'login'])->name('auth.google.login');
+Route::get('/auth/google/callback', [GoogleAuthController::class, 'callback'])->name('auth.google.callback');
+    
 
 Route::controller(IndexController::class)->group(function () {
     Route::get('/', 'index')->name('home');

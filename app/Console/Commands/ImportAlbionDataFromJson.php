@@ -118,7 +118,6 @@ class ImportAlbionDataFromJson extends Command
                         ]);
                     }
               
-
                 if (ItemStat::where('item_id', $item->id)->exists()) {
                     $item->stats()->update([
                         'stats_data' => $itemStats,

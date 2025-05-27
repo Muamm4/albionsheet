@@ -9,20 +9,12 @@ use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use Laravel\Socialite\Facades\Socialite;
 
+Route::get('/', [IndexController::class,'index'])->name('home');
+
+
 Route::get('/auth/google', [GoogleAuthController::class, 'login'])->name('auth.google.login');
 Route::get('/auth/google/callback', [GoogleAuthController::class, 'callback'])->name('auth.google.callback');
     
-
-Route::controller(IndexController::class)->group(function () {
-    Route::get('/', 'index')->name('home');
-});
-
-Route::get('/albion', [AlbionController::class, 'index'])->name('albion.index');
-Route::post('/albion/prices', [AlbionController::class, 'getItemPrices'])->name('albion.prices');
-
-// Novas rotas para detalhes do item e informações de crafting
-Route::get('/albion/item/{itemId}', [AlbionController::class, 'itemDetail'])->name('albion.item.detail');
-Route::get('/albion/crafting', [AlbionController::class, 'getCraftingInfo'])->name('albion.crafting.info');
 
 // API routes para o novo formato
 Route::get('/api/albion/item/{itemId}', [AlbionController::class, 'getItemDetails'])->name('api.albion.item');
@@ -43,6 +35,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/prices', 'getItemPrices')->name('prices');
         Route::get('/item/{itemId}', 'itemDetail')->name('item.detail');
         Route::get('/crafting', 'getCraftingInfo')->name('crafting.info');
+        Route::get('/favorites', 'favorites')->name('favorites');
+        Route::get('/calculator', 'calculator')->name('calculator');
+        Route::get('/black-market', 'blackMarket')->name('black-market');
     });
 });
 

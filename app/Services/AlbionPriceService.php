@@ -11,6 +11,7 @@ use App\Models\ItemPrice;
 use GuzzleHttp\Client;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
 
 class AlbionPriceService
 {
@@ -29,9 +30,11 @@ class AlbionPriceService
      * Busca preços para uma lista de itens na API do Albion Online
      * 
      * @param array|Collection $items Lista de uniquenames ou objetos Item
+     * @param bool $useCache Se deve usar o cache ou forçar uma nova requisição
+     * @param int $cacheTtl Tempo em minutos para expiração do cache
      * @return array Dados organizados por item_id, quality e city
      */
-    public function fetchPrices(array|Collection $items): array
+    public function fetchPrices(array|Collection $items, bool $useCache = true, int $cacheTtl = 30): array
     {
         try {
             // Extrair uniquenames se for uma coleção de objetos Item
@@ -46,6 +49,15 @@ class AlbionPriceService
             // Converter array para string separada por vírgulas
             $itemIdsString = implode(',', $itemIds);
             
+            // Gerar uma chave de cache única baseada nos itens solicitados
+            $cacheKey = 'albion_prices_' . md5($itemIdsString);
+            
+            // Verificar se deve usar o cache e se os dados estão em cache
+            if ($useCache && Cache::has($cacheKey)) {
+                Log::info('Usando dados em cache para os itens: ' . $itemIdsString);
+                return Cache::get($cacheKey);
+            }
+            
             // Fazer requisição à API
             $response = $this->httpClient->request('GET', $this->apiBaseUrl . $itemIdsString);
             
@@ -58,8 +70,15 @@ class AlbionPriceService
             }
             
             $data = json_decode($response->getBody()->getContents(), true);
+            $organizedData = $this->organizeData($data);
             
-            return $this->organizeData($data);
+            // Armazenar os dados em cache
+            if ($useCache) {
+                Cache::put($cacheKey, $organizedData, now()->addMinutes($cacheTtl));
+                Log::info('Dados armazenados em cache para os itens: ' . $itemIdsString);
+            }
+            
+            return $organizedData;
         } catch (\Exception $e) {
             Log::error('Exceção ao buscar preços na API do Albion Online', [
                 'message' => $e->getMessage(),
@@ -179,11 +198,12 @@ class AlbionPriceService
      * Atualiza os preços para um item específico
      * 
      * @param Item $item Item para atualizar preços
+     * @param bool $useCache Se deve usar o cache ou forçar uma nova requisição
      * @return array Dados de preços organizados
      */
-    public function updateItemPrices(Item $item): array
+    public function updateItemPrices(Item $item, bool $useCache = true): array
     {
-        $prices = $this->fetchPrices([$item->uniquename]);
+        $prices = $this->fetchPrices([$item->uniquename], $useCache);
         
         if (!empty($prices)) {
             $this->savePricesToDatabase($prices);
@@ -196,11 +216,12 @@ class AlbionPriceService
      * Atualiza os preços para uma lista de itens
      * 
      * @param array|Collection $items Lista de itens para atualizar preços
+     * @param bool $useCache Se deve usar o cache ou forçar uma nova requisição
      * @return array Dados de preços organizados
      */
-    public function updateItemsPrices(array|Collection $items): array
+    public function updateItemsPrices(array|Collection $items, bool $useCache = true): array
     {
-        $prices = $this->fetchPrices($items);
+        $prices = $this->fetchPrices($items, $useCache);
         
         if (!empty($prices)) {
             $this->savePricesToDatabase($prices);

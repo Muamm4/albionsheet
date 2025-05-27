@@ -10,12 +10,18 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\City;
+use App\Enums\Quality;
 use App\Models\AlbionCraft;
 use App\Models\AlbionMaterial;
+use App\Models\Item;
+use App\Models\ItemPrice;
+use App\Services\AlbionPriceService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 use Inertia\Inertia;
 use Inertia\Response;
 use Illuminate\Support\Facades\Schema;
@@ -26,10 +32,16 @@ use Illuminate\Support\Facades\Log;
  */
 class AlbionController extends Controller
 {
+    protected AlbionPriceService $priceService;
+    
+    public function __construct(AlbionPriceService $priceService)
+    {
+        $this->priceService = $priceService;
+    }
 
     public function index()
     {
-        return Inertia::render('Albion/Index');
+        return Inertia::render('albion/Index');
     }
 
     public function itemDetail(Request $request, $itemId)
@@ -38,11 +50,7 @@ class AlbionController extends Controller
             return redirect()->route('albion.index');
         }
         
-        $item = AlbionCraft::findByUniqueName($itemId);
-        
-        return Inertia::render('Albion/ItemDetail', [
-            'item' => $item,
-        ]);
+        return Inertia::render('Albion/ItemDetail');
     }
 
     public function favorites()
@@ -101,6 +109,17 @@ class AlbionController extends Controller
             return response()->json(['error' => 'Item not found'], 404);
         }
         
+        // Verificar se o item está no cache
+        $cacheKey = "item_details_{$itemId}";
+        $cachedItem = Cache::get($cacheKey);
+        
+        if ($cachedItem) {
+            return response()->json($cachedItem);
+        }
+        
+        // Se não estiver no cache, salvar no cache por 1 hora
+        Cache::put($cacheKey, $item, now()->addHour());
+        
         return response()->json($item);
     }
 
@@ -108,13 +127,6 @@ class AlbionController extends Controller
     {
         if (!$itemId) {
             return response()->json(['error' => 'No item ID provided'], 400);
-        }
-        
-        // Buscar informações de crafting do banco de dados usando o model
-        $craftingData = AlbionCraft::findByUniqueName($itemId);
-        
-        if ($craftingData) {
-            return response()->json($craftingData->getCraftingInfo());
         }
         
         // Fallback para o método de simulação se não encontrar no banco
@@ -284,70 +296,59 @@ class AlbionController extends Controller
         return $artifacts[$key] ?? "Artefato Nível {$level}";
     }
 
+    /**
+     * Busca preços de itens na API do Albion Online e salva no banco de dados
+     * 
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
     public function getItemPrices(Request $request)
     {
         try {
             $itemIds = $request->input('items');
             
-            if (!$itemIds) {
+            if (!$itemIds || !is_array($itemIds)) {
                 return response()->json(['error' => 'No items provided'], 400);
             }
             
-            // Convert array to comma-separated string if needed
-            if (is_array($itemIds)) {
-                $itemIds = implode(',', $itemIds);
-            }
-            
-            // Albion Online Data API endpoint
-            $apiUrl = "https://west.albion-online-data.com/api/v2/stats/prices/{$itemIds}";
-            
-            // Add optional parameters
             $locations = $request->input('locations');
             $qualities = $request->input('qualities');
+            $forceRefresh = $request->boolean('forceRefresh', false);
             
-            $queryParams = [];
+            // Verificar se os itens existem no banco de dados
+            $items = Item::whereIn('uniquename', $itemIds)->get();
             
-            if ($locations) {
-                $queryParams['locations'] = is_array($locations) 
-                    ? implode(',', $locations) 
-                    : $locations;
-            }
-            
-            if ($qualities) {
-                $queryParams['qualities'] = is_array($qualities) 
-                    ? implode(',', $qualities) 
-                    : $qualities;
-            }
-            
-            // Use o cliente HTTP do Laravel para fazer a requisição
-            $client = new \GuzzleHttp\Client(['timeout' => 10]);
-            $response = $client->request('GET', $apiUrl, [
-                'query' => $queryParams,
-                'http_errors' => false
-            ]);
-            
-            $statusCode = $response->getStatusCode();
-            
-            if ($statusCode !== 200) {
-                Log::warning("API Albion retornou status {$statusCode} para {$apiUrl}", [
-                    'items' => $itemIds,
-                    'locations' => $locations,
-                    'qualities' => $qualities
-                ]);
+            // Se não encontrar todos os itens solicitados no banco, buscar apenas os que existem
+            if ($items->count() < count($itemIds)) {
+                $foundItemIds = $items->pluck('uniquename')->toArray();
+                $missingItemIds = array_diff($itemIds, $foundItemIds);
                 
-                // Retornar array vazio em vez de erro para não quebrar o frontend
+                if (!empty($missingItemIds)) {
+                    Log::warning('Alguns itens solicitados não foram encontrados no banco de dados', [
+                        'missing_items' => $missingItemIds
+                    ]);
+                }
+                
+                // Se não encontrar nenhum item, retornar array vazio
+                if ($items->isEmpty()) {
+                    return response()->json([]);
+                }
+            }
+            
+            // Buscar preços usando o serviço com cache (ou forçar atualização se solicitado)
+            $prices = $this->priceService->fetchPrices($items, !$forceRefresh);
+            
+            if (empty($prices)) {
                 return response()->json([]);
             }
             
-            $data = json_decode($response->getBody(), true);
+            // Salvar os preços no banco de dados
+            $this->priceService->savePricesToDatabase($prices);
             
-            // Verificar se os dados são válidos
-            if (!is_array($data)) {
-                Log::warning("API Albion retornou dados inválidos para {$apiUrl}");
-                return response()->json([]);
-            }
+            // Filtrar os resultados conforme os parâmetros da requisição
+            $filteredData = $this->filterPriceData($prices, $locations, $qualities);
             
-            return response()->json($data);
+            return response()->json($filteredData);
         } catch (\Exception $e) {
             Log::error("Erro ao buscar preços da API Albion: " . $e->getMessage(), [
                 'items' => $request->input('items'),
@@ -358,56 +359,68 @@ class AlbionController extends Controller
             return response()->json([]);
         }
     }
-
-    public function getItemsToCraft($itemId)
+    
+    /**
+     * Filtra os dados de preços conforme os parâmetros da requisição
+     * 
+     * @param array $prices Dados de preços organizados
+     * @param array|string|null $locations Localizações para filtrar
+     * @param array|string|null $qualities Qualidades para filtrar
+     * @return array Dados filtrados no formato esperado pelo frontend
+     */
+    /**
+     * Filtra os dados de preços conforme os parâmetros da requisição
+     * 
+     * @param array $prices Dados de preços organizados
+     * @param array|string|null $locations Localizações para filtrar
+     * @param array|string|null $qualities Qualidades para filtrar
+     * @return array Dados filtrados no formato esperado pelo frontend
+     */
+    private function filterPriceData(array $prices, $locations = null, $qualities = null): array
     {
-        if (!$itemId) {
-            return response()->json(['error' => 'No item ID provided'], 400);
-        }
+        $result = [];
         
-        try {
-            // Verificar se a tabela existe
-            if (!Schema::hasTable('craft')) {
-                return response()->json([]);
-            }
+        // Converter para arrays se forem strings
+        $locationArray = is_string($locations) ? explode(',', $locations) : $locations;
+        $qualityArray = is_string($qualities) ? explode(',', $qualities) : $qualities;
+        
+        foreach ($prices as $itemData) {
+            $itemId = $itemData['item_id'];
             
-            // Buscar itens que usam este material
-            $craftableItems = AlbionCraft::where('craftitem1', $itemId)
-                ->orWhere('craftitem2', $itemId)
-                ->orWhere('craftitem3', $itemId)
-                ->orWhere('craftitem4', $itemId)
-                ->orWhere('craftitem5', $itemId)
-                ->orWhere('craftitem6', $itemId)
-                ->get();
+            foreach ($itemData['qualities'] as $qualityData) {
+                $quality = $qualityData['quality'];
                 
-            if ($craftableItems->isEmpty()) {
-                return response()->json([]);
-            }
-            
-            $result = [];
-            
-            foreach ($craftableItems as $item) {
-                try {
-                    $materials = $item->getMaterials();
-                    $craftingInfo = $item->getCraftingInfo();
-                    
-                    $result[] = [
-                        'id' => $item->uniquename,
-                        'name' => $item->nicename ?: $item->uniquename,
-                        'materials' => $materials,
-                        'craftingInfo' => $craftingInfo
-                    ];
-                } catch (\Exception $e) {
-                    Log::error("Erro ao processar item craftável {$item->uniquename}: " . $e->getMessage());
-                    // Continuar com o próximo item
+                // Filtrar por qualidade se especificado
+                if ($qualityArray && !in_array($quality, $qualityArray)) {
                     continue;
                 }
+                
+                foreach ($qualityData['cities'] as $cityData) {
+                    $city = $cityData['city'];
+                    
+                    // Filtrar por localização se especificado
+                    if ($locationArray && !in_array($city, $locationArray)) {
+                        continue;
+                    }
+                    
+                    // Formatar os dados no formato esperado pelo frontend
+                    $result[] = [
+                        'item_id' => $itemId,
+                        'city' => $city,
+                        'quality' => $quality,
+                        'sell_price_min' => $cityData['sell_price_min'],
+                        'sell_price_min_date' => $cityData['sell_price_min_date'],
+                        'sell_price_max' => $cityData['sell_price_max'],
+                        'sell_price_max_date' => $cityData['sell_price_max_date'],
+                        'buy_price_min' => $cityData['buy_price_min'],
+                        'buy_price_min_date' => $cityData['buy_price_min_date'],
+                        'buy_price_max' => $cityData['buy_price_max'],
+                        'buy_price_max_date' => $cityData['buy_price_max_date']
+                    ];
+                }
             }
-            
-            return response()->json($result);
-        } catch (\Exception $e) {
-            Log::error("Erro ao buscar itens craftáveis para {$itemId}: " . $e->getMessage());
-            return response()->json([]);
         }
+        
+        return $result;
     }
 }

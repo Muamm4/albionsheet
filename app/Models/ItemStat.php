@@ -12,13 +12,14 @@ class ItemStat extends Model
     protected $fillable = [
         'item_id',
         'stats_data',
-        'itempower',
+        'enchantment',
         'craftingrequirements',
         'upgraderequirements',
     ];
 
     protected $casts = [
         'stats_data' => 'array',
+        'enchantment' => 'array',
         'craftingrequirements' => 'array',
         'upgraderequirements' => 'array',
     ];

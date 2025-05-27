@@ -15,7 +15,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('item_id')->constrained()->onDelete('cascade');
             $table->json('stats_data')->nullable()->comment('Dados completos de estatísticas do item em formato JSON');
-            $table->string('itempower')->nullable();
+            $table->json('enchantment')->nullable();
             $table->json('craftingrequirements')->nullable();
             $table->json('upgraderequirements')->nullable();
             $table->timestamps();

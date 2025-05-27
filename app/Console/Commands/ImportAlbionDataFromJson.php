@@ -6,6 +6,7 @@ namespace App\Console\Commands;
 
 use App\Models\Item;
 use App\Models\ItemMaterial;
+use App\Models\ItemStat;
 use App\Services\AlbionPriceService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -47,6 +48,7 @@ class ImportAlbionDataFromJson extends Command
 
         try {
             // Carregar o conteúdo do arquivo JSON
+            DB::beginTransaction();
             $jsonContent = File::get($this->jsonFile);
             $jsonData = json_decode($jsonContent, true);
 
@@ -60,6 +62,7 @@ class ImportAlbionDataFromJson extends Command
 
             $this->mergeStats();
             $this->info('Stats mesclados com sucesso. Iniciando processamento de itens...');
+
             $bar = $this->output->createProgressBar(count($jsonData));
             $bar->start();
             foreach ($jsonData as $item) {
@@ -78,10 +81,8 @@ class ImportAlbionDataFromJson extends Command
                     $this->error($e->getMessage());
                     dd($item);
                 }
-                    $itemStats = $this->findItemStats($uniqueNameKey);
-                if($itemStats === []){
-                    // $this->error("Item sem stats: {$uniqueNameKey}");
-                }
+
+                $itemStats = $this->findItemStats($uniqueNameKey);
                 
                 $items[$uniqueNameKey]["shop_category"] = isset($itemStats['@shopcategory']) ? $itemStats['@shopcategory'] : "sem categoria";
                 $items[$uniqueNameKey]["shop_subcategory1"] = isset($itemStats['@shopsubcategory1']) ? $itemStats['@shopsubcategory1'] : "sem subcategoria";
@@ -91,47 +92,66 @@ class ImportAlbionDataFromJson extends Command
                 $items[$uniqueNameKey]["crafting_category"] = isset($itemStats['@craftingcategory']) ? $itemStats['@craftingcategory'] : null;
                 $items[$uniqueNameKey]["enchantment_level"] = isset($itemStats['enchantment']['@enchantmentlevel']) ? $itemStats['enchantment']['@enchantmentlevel'] : "0";
                 $items[$uniqueNameKey]["craftingrequirements"] = isset($itemStats['craftingrequirements']) ? $itemStats['craftingrequirements'] : null;
-                $items[$uniqueNameKey]["enchantment"] = isset($itemStats['enchantment']) ? $itemStats['enchantment'] : 0;
-                $items[$uniqueNameKey]["upgraderequirements"] = isset($itemStats['upgraderequirements']) ? $itemStats['upgraderequirements'] : null;
+                $items[$uniqueNameKey]["enchantment"] = isset($itemStats['enchantment']) ? $itemStats['enchantment'] : null;
+                $items[$uniqueNameKey]["upgraderequirements"] = isset($itemStats['enchantment']['upgraderequirements']) ? $itemStats['enchantment']['upgraderequirements'] : null;
 
                 // Remove campos que não pertencem ao modelo Item
                 $itemData = collect($items[$uniqueNameKey])
-                    ->except("enchantment", "craftingrequirements", "upgraderequirements")
+                    ->except("craftingrequirements", "upgraderequirements")
                     ->toArray();
+                
+                    if (Item::where('uniquename', $uniqueNameKey)->exists()) {
+                        $item = Item::where('uniquename', $uniqueNameKey)->first();
+                        $item->update($itemData);
+                    } else {
+                        $item = Item::create([
+                            'uniquename' => $uniqueNameKey,
+                            'nicename' => $items[$uniqueNameKey]['nicename'],
+                            'description' => $items[$uniqueNameKey]['description'],
+                            'tier' => $items[$uniqueNameKey]['tier'],
+                            'enchantment_level' => $items[$uniqueNameKey]['enchantment_level'],
+                            'item_power' => $items[$uniqueNameKey]['item_power'],
+                            'shop_category' => $items[$uniqueNameKey]['shop_category'],
+                            'shop_subcategory1' => $items[$uniqueNameKey]['shop_subcategory1'],
+                            'slot_type' => $items[$uniqueNameKey]['slot_type'],
+                            'crafting_category' => $items[$uniqueNameKey]['crafting_category'],
+                        ]);
+                    }
+              
 
-                // Cria ou atualiza o item
-                $item = Item::updateOrCreate([
-                    'uniquename' => $uniqueNameKey
-                ], $itemData);
-
-                // Cria ou atualiza as estatísticas do item
-                $item->stats()->updateOrCreate(
-                    ['item_id' => $item->id],
-                    [
+                if (ItemStat::where('item_id', $item->id)->exists()) {
+                    $item->stats()->update([
                         'stats_data' => $itemStats,
-                        'itempower' => $items[$uniqueNameKey]['itempower'],
+                        'enchantment' => $items[$uniqueNameKey]['enchantment'],
                         'craftingrequirements' => $items[$uniqueNameKey]['craftingrequirements'],
-                        'upgraderequirements' => $items[$uniqueNameKey]['upgraderequirements']
-                    ]
-                );
+                        'upgraderequirements' => isset($items[$uniqueNameKey]['enchantment']['upgraderequirements']) ? $items[$uniqueNameKey]['enchantment']['upgraderequirements'] : null
+                    ]);
+                } else {
+                    $item->stats()->create([
+                        'stats_data' => $itemStats,
+                        'enchantment' => $items[$uniqueNameKey]['enchantment'],
+                        'craftingrequirements' => $items[$uniqueNameKey]['craftingrequirements'],
+                        'upgraderequirements' => isset($items[$uniqueNameKey]['enchantment']['upgraderequirements']) ? $items[$uniqueNameKey]['enchantment']['upgraderequirements'] : null
+                    ]);
+                }
 
                 $bar->advance();
             }
             $bar->finish();
             $this->newLine(2);
-            
+            $this->info("Itens processados com sucesso.");
             
            $itemsObject = collect($items);
            $this->info("Total de itens processados: " . $itemsObject->count());
 
-            $categories = $itemsObject->pluck('shopcategory')->unique()->values()->all();
+            $categories = $itemsObject->pluck('shop_category')->unique()->values()->all();
             foreach($categories as $category){
                 $this->info("Categoria: " . $category);
             }
 
             $this->newLine(2);
             $this->info("Itens sem categoria:");
-            $itemsWithoutCategory = $itemsObject->where('shopcategory', 'sem categoria')->pluck('uniqueName')->values()->all();
+            $itemsWithoutCategory = $itemsObject->where('shop_category', 'sem categoria')->pluck('uniquename')->values()->all();
             foreach($itemsWithoutCategory as $item){
                 $this->info("Item sem categoria: " . $item);
             }
@@ -142,21 +162,21 @@ class ImportAlbionDataFromJson extends Command
 
             $this->newLine(2);
             $this->info("Itens sem tier:");
-            $itemsWithoutTier = $itemsObject->where('tier', 'sem tier')->pluck('uniqueName')->values()->all();
+            $itemsWithoutTier = $itemsObject->where('tier', 'sem tier')->pluck('uniquename')->values()->all();
             foreach($itemsWithoutTier as $item){
                 $this->info("Item sem tier: " . $item);
             }
 
             $this->newLine(2);
             $this->info("Itens aleatórios por categoria:");
-            $categories = $itemsObject->pluck('shopcategory')->unique()->values()->all();
+            $categories = $itemsObject->pluck('shop_category')->unique()->values()->all();
             foreach($categories as $category){
-                $item = $itemsObject->where('shopcategory', $category)->random();
+                $item = $itemsObject->where('shop_category', $category)->random();
                 $this->info("Categoria: " . $category);
-                $this->info("Item: " . $item['uniqueName']);
+                $this->info("Item: " . $item['uniquename']);
                 $this->info("  - Tier: " . $item['tier']);
                 $this->info("  - Requisitos de fabricação: " . json_encode($item['craftingrequirements']));
-                $this->info("  - Subcategoria 1: " . $item['shopsubcategory1']);
+                $this->info("  - Subcategoria 1: " . $item['shop_subcategory1']);
                 $this->newLine(2);
             }
 
@@ -246,6 +266,8 @@ class ImportAlbionDataFromJson extends Command
         if($verifyEnchant && isset($itemStats['enchantments'])){
             $enchantStats = $this->recursiveFindKeyValue('@enchantmentlevel', $tier, $itemStats['enchantments']);
             $itemStats['enchantment'] = $enchantStats;
+        }else{
+            $itemStats['enchantment'] = isset($itemStats['enchantments']['enchantment']) ? $itemStats['enchantments']['enchantment'] : [];
         }
         if ($itemStats) {
             return $itemStats;

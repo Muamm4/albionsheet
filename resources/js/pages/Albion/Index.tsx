@@ -38,14 +38,14 @@ export default function AlbionIndex() {
 
   // Função para adicionar um item à lista de selecionados
   const addItem = (item: AlbionItem) => {
-    if (!selectedItems.some(selected => selected.uniqueName === item.uniqueName)) {
+    if (!selectedItems.some(selected => selected.uniquename === item.uniquename)) {
       setSelectedItems([...selectedItems, item]);
     }
   };
 
   // Função para remover um item selecionado
   const removeItem = (uniqueName: string) => {
-    setSelectedItems(selectedItems.filter(item => item.uniqueName !== uniqueName));
+    setSelectedItems(selectedItems.filter(item => item.uniquename !== uniqueName));
   };
 
   // Função para buscar os preços dos itens selecionados
@@ -57,7 +57,7 @@ export default function AlbionIndex() {
 
     setLoading(true);
     try {
-      const itemIds = selectedItems.map(item => item.uniqueName);
+      const itemIds = selectedItems.map(item => item.uniquename);
       const priceData = await fetchItemPrices(itemIds, [selectedCity]);
       setPrices(priceData);
     } catch (error) {
@@ -70,14 +70,8 @@ export default function AlbionIndex() {
 
   // Função para obter o nome do item
   const getItemName = (itemId: string) => {
-    const item = selectedItems.find(item => item.uniqueName === itemId);
-    return item?.localizedNames['PT-BR'] || item?.localizedNames['EN-US'] || item?.uniqueName || itemId;
-  };
-
-  // Função para obter o nome em inglês do item
-  const getItemEnglishName = (itemId: string) => {
-    const item = selectedItems.find(item => item.uniqueName === itemId);
-    return item?.localizedNames['EN-US'] || '';
+    const item = selectedItems.find(item => item.uniquename === itemId);
+    return item?.nicename || item?.uniquename || itemId;
   };
 
   return (
@@ -111,20 +105,20 @@ export default function AlbionIndex() {
             <div className="flex flex-wrap gap-2">
               {selectedItems.map((item) => (
                 <div
-                  key={item.uniqueName}
+                  key={item.uniquename}
                   className="flex items-center rounded-md border border-border bg-background px-3 py-2"
                 >
                   <img 
-                    src={getItemIconUrl(item.uniqueName, 40)} 
-                    alt={item.localizedNames['PT-BR'] || item.uniqueName} 
+                    src={getItemIconUrl(item.uniquename, 40)} 
+                    alt={item.nicename || item.uniquename} 
                     className="mr-2 h-8 w-8 rounded object-contain"
                     onError={(e) => {
                       (e.target as HTMLImageElement).src = 'https://render.albiononline.com/v1/item/T4_BAG.png?size=40&quality=1';
                     }}
                   />
-                  <span className="mr-2">{item.localizedNames['PT-BR'] || item.localizedNames['EN-US'] || item.uniqueName}</span>
+                  <span className="mr-2">{item.nicename || item.uniquename}</span>
                   <button
-                    onClick={() => removeItem(item.uniqueName)}
+                    onClick={() => removeItem(item.uniquename)}
                     className="ml-2 text-muted-foreground hover:text-foreground"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -212,7 +206,7 @@ export default function AlbionIndex() {
                     <tbody className="divide-y divide-border bg-background">
                       {prices.map((price, index) => {
                         console.log(price);
-                        const item = selectedItems.find(item => item.uniqueName === price.item_id);
+                        const item = selectedItems.find(item => item.uniquename === price.item_id);
                         
                         // Formatar a data mais recente
                         const dates = [
@@ -243,23 +237,23 @@ export default function AlbionIndex() {
                             <td className="whitespace-nowrap px-6 py-4 text-sm font-medium">
                               <div className="flex items-center">
                                 <img 
-                                  src={getItemIconUrl(getBaseItemId(price.item_id), 40, price.quality)} 
-                                  alt={item?.localizedNames['PT-BR'] || price.item_id} 
+                                  src={getItemIconUrl(price.item_id, 40, price.quality)} 
+                                  alt={item?.nicename || price.item_id} 
                                   className="mr-3 h-8 w-8 rounded object-contain"
                                   onError={(e) => {
-                                    (e.target as HTMLImageElement).src = 'https://render.albiononline.com/v1/item/' + getBaseItemId(price.item_id) + '.png?size=40&quality=' + price.quality;
+                                    (e.target as HTMLImageElement).src = 'https://render.albiononline.com/v1/item/' + price.item_id + '.png?size=40&quality=' + price.quality;
                                   }}
                                 />
                                 <div>
                                   <div>
-                                    {item?.localizedNames['PT-BR'] || getBaseItemId(price.item_id)}
+                                    {item?.nicename || price.item_id}
                                     {getEnchantmentLevel(price.item_id) > 0 && (
                                       <span className="ml-1 text-xs font-medium text-blue-500">
                                         (Encantamento Nível {getEnchantmentLevel(price.item_id)})
                                       </span>
                                     )}
                                   </div>
-                                  <div className="text-xs text-muted-foreground">{item?.localizedNames['EN-US']}</div>
+                                  <div className="text-xs text-muted-foreground">{item?.nicename}</div>
                                 </div>
                               </div>
                             </td>

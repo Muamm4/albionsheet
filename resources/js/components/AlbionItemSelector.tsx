@@ -42,32 +42,9 @@ export default function AlbionItemSelector({ onItemSelect, placeholder = 'Digite
     setLoading(true);
     try {
       // Buscar itens base primeiro
-      const baseItems = await searchItems(term);
+      const baseItems = await searchItems(term, 20, parseInt(enchantmentLevel, 10), parseInt(selectedTier, 10));
       
-      // Aplicar tier e encantamento aos resultados
-      const tier = parseInt(selectedTier, 10);
-      const enchantLevel = parseInt(enchantmentLevel, 10);
-      
-      const modifiedItems = baseItems.map(item => {
-        let modifiedItem = {...item};
-        const baseItemId = getBaseItemId(item.uniqueName);
-        
-        // Aplicar tier se selecionado
-        if (tier > 0) {
-          const itemWithTier = applyItemTier(baseItemId, tier);
-          modifiedItem.uniqueName = itemWithTier;
-        }
-        
-        // Aplicar encantamento se selecionado
-        if (enchantLevel > 0) {
-          const finalItemId = tier > 0 ? modifiedItem.uniqueName : baseItemId;
-          modifiedItem.uniqueName = applyEnchantmentLevel(finalItemId, enchantLevel);
-        }
-        
-        return modifiedItem;
-      });
-      
-      setSuggestions(modifiedItems);
+      setSuggestions(baseItems);
     } catch (error) {
       console.error('Erro ao buscar sugestões:', error);
       setSuggestions([]);
@@ -117,13 +94,7 @@ export default function AlbionItemSelector({ onItemSelect, placeholder = 'Digite
             placeholder={placeholder}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            list="item-suggestions"
           />
-          <datalist id="item-suggestions">
-            {suggestions.map((item) => (
-              <option key={item.uniqueName} value={item.localizedNames['PT-BR'] || item.localizedNames['EN-US'] || item.uniqueName} />
-            ))}
-          </datalist>
           {loading && (
             <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
               <svg className="animate-spin h-5 w-5 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -156,7 +127,7 @@ export default function AlbionItemSelector({ onItemSelect, placeholder = 'Digite
             <SelectValue placeholder="Encantamento" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="0">Normal</SelectItem>
+            <SelectItem value="0">Nível 0</SelectItem>
             <SelectItem value="1">Nível 1</SelectItem>
             <SelectItem value="2">Nível 2</SelectItem>
             <SelectItem value="3">Nível 3</SelectItem>
@@ -173,18 +144,18 @@ export default function AlbionItemSelector({ onItemSelect, placeholder = 'Digite
         >
           {suggestions.map((item) => {
             // Extrair o ID base do item sem o nível de encantamento
-            const baseItemId = getBaseItemId(item.uniqueName);
+            const baseItemId = item.uniquename;
             
             return (
               <div
-                key={item.uniqueName}
+                key={item.uniquename}
                 className="p-3 hover:bg-gray-100 dark:hover:bg-gray-600 cursor-pointer flex items-start gap-3"
                 onClick={() => selectItem(item)}
               >
                 <div className="flex-shrink-0">
                   <img 
                     src={getItemIconUrl(baseItemId, 64)} 
-                    alt={item.name} 
+                    alt={item.nicename} 
                     className="w-12 h-12 object-contain rounded bg-gray-100 dark:bg-gray-800"
                     onError={(e) => {
                       // Fallback para ícones que não carregam
@@ -194,15 +165,14 @@ export default function AlbionItemSelector({ onItemSelect, placeholder = 'Digite
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="font-medium">
-                    {item.localizedNames['PT-BR'] || baseItemId}
+                    {item.nicename || baseItemId}
                   </div>
-                  {item.localizedNames['EN-US'] && item.localizedNames['PT-BR'] !== item.localizedNames['EN-US'] && (
-                    <div className="text-sm text-gray-500 dark:text-gray-400">
-                      {item.localizedNames['EN-US']}
-                    </div>
-                  )}
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    {item.tier ? `Tier ${item.tier}` : ''}
+                    {item.enchantment_level && item.enchantment_level > 0 ? ` | Encantamento ${item.enchantment_level}` : ''}
+                  </div>
                   <div className="text-xs text-gray-400 dark:text-gray-500 mt-1 truncate">
-                    {baseItemId}
+                    {item.uniquename}
                   </div>
                 </div>
               </div>

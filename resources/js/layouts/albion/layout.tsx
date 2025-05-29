@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 import { type NavItem } from '@/types';
-import { Link } from '@inertiajs/react';
+import { Head, Link } from '@inertiajs/react';
 import { type PropsWithChildren } from 'react';
 import AppLayoutTemplate from '@/layouts/app/app-sidebar-layout';
 
@@ -66,6 +66,10 @@ export default function AlbionLayout({
 
     return (
         <AppLayoutTemplate breadcrumbs={breadcrumbs}>
+            <Head title={title} >
+                <link rel="preconnect" href="https://fonts.bunny.net" />
+                <link href="https://fonts.bunny.net/css?family=instrument-sans:400,500,600" rel="stylesheet" />
+            </Head>
             <div className="px-4 py-6">
                 <Heading title={title} description={description} />
 

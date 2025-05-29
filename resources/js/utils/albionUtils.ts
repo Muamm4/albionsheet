@@ -9,13 +9,10 @@ import axios from 'axios';
  */
 export interface AlbionItem {
   id: string;
-  name: string;
-  localizedNames: {
-    'PT-BR'?: string;
-    'EN-US'?: string;
-    [key: string]: string | undefined;
-  };
-  uniqueName: string;
+  nicename: string;
+  uniquename: string;
+  tier?: number;
+  enchantment_level?: number;
 }
 
 /**
@@ -71,89 +68,98 @@ export const getItemIconUrl = (itemId: string, size: number = 100, quality: numb
   return `${baseUrl}/${itemId}.png?size=${size}&quality=${quality}`;
 };
 
-/**
- * Busca os itens do Albion Online que correspondem ao termo de busca
- * 
- * @param searchTerm Termo de busca
- * @param limit Limite de resultados
- * @param enchantmentLevel Nível de encantamento (opcional)
- * @returns Lista de itens filtrados
- */
-export const searchItems = async (searchTerm: string, limit: number = 10, enchantmentLevel: number = 0): Promise<AlbionItem[]> => {
+export const searchItems = async (searchTerm: string, limit: number = 10, enchantmentLevel: number = 0, tier: number = 0): Promise<AlbionItem[]> => {
   if (!searchTerm || searchTerm.length < 3) {
     return [];
   }
 
   try {
-    // Extrair o ID base caso o termo de busca contenha encantamento (@)
-    let cleanSearchTerm = searchTerm;
-    if (searchTerm.includes('@')) {
-      cleanSearchTerm = getBaseItemId(searchTerm);
-    }
-
     // Buscar os dados dos itens do arquivo JSON
-    const response = await axios.get('/items.json');
+    const response = await axios.get('../api/albion/items/list');
     const items = response.data;
+
+    // Limpar o termo de busca para comparações
+    const cleanSearchTerm = searchTerm.toLowerCase();
     
-    // Filtrar os itens que correspondem ao termo de busca
+    // Filtrar os itens que correspondem ao termo de busca, tier e encantamento
     const filtered = items
+      // Filtramos apenas itens base (sem encantamento no ID)
+      .filter((item: any) => !item.uniquename.includes('@'))
       .filter((item: any) => {
-        const ptName = item.LocalizedNames?.['PT-BR']?.toLowerCase() || '';
-        const enName = item.LocalizedNames?.['EN-US']?.toLowerCase() || '';
-        const uniqueName = item.UniqueName?.toLowerCase() || '';
-        // Usar o termo de busca limpo (sem encantamento)
-        const term_lower = cleanSearchTerm.toLowerCase();
+        const niceName = item.nicename?.toLowerCase() || '';
+        const uniqueName = item.uniquename?.toLowerCase() || '';
         
-        return ptName.includes(term_lower) || 
-               enName.includes(term_lower) || 
-               uniqueName.includes(term_lower);
+        // Verificar se o item contém o termo de busca (condição obrigatória)
+        const matchesTerm = niceName.includes(cleanSearchTerm) || uniqueName.includes(cleanSearchTerm);
+        if (!matchesTerm) return false; // Se não corresponde ao termo de busca, já descarta
+        
+        // Verificar tier se especificado
+        if (tier > 0) {
+            const tierPattern = "t" + tier.toString();
+            const matchesTier = uniqueName.includes(tierPattern);
+            if (!matchesTier) return false; // Se não corresponde ao tier, já descarta
+        }
+        
+        // Se passou por todas as verificações, o item corresponde aos critérios
+        return true;
       })
       .map((item: any) => {
         // Obter o ID base do item
-        const baseItemId = item.UniqueName;
+        const baseItemId = item.uniquename;
+        
+        // Aplicar tier se especificado (caso o item não tenha o tier correto)
+        let processedItemId = baseItemId;
+        if (tier > 0) {
+          processedItemId = applyItemTier(processedItemId, tier);
+        }
         
         // Aplicar encantamento se necessário
-        const uniqueName = enchantmentLevel > 0 ? 
-          applyEnchantmentLevel(baseItemId, enchantmentLevel) : 
-          baseItemId;
+        const uniquename = enchantmentLevel > 0 ? 
+          applyEnchantmentLevel(processedItemId, enchantmentLevel) : 
+          processedItemId;
         
         return {
-          id: item.Index || '',
-          name: item.LocalizedNames?.['EN-US'] || item.LocalizedNames?.['PT-BR'] || uniqueName,
-          localizedNames: item.LocalizedNames || {},
-          uniqueName: uniqueName
+          id: item.id || '',
+          nicename: item.nicename || uniquename,
+          uniquename: uniquename,
+          tier: item.tier || getItemTier(uniquename),
+          enchantment_level: enchantmentLevel || item.enchantment_level || 0
         };
       })
       .sort((a: AlbionItem, b: AlbionItem) => {
         // Ordenar primeiro pelos itens que começam com o termo de busca
-        const term_lower = cleanSearchTerm.toLowerCase();
-        const aPtName = a.localizedNames['PT-BR']?.toLowerCase() || '';
-        const aEnName = a.localizedNames['EN-US']?.toLowerCase() || '';
-        const bPtName = b.localizedNames['PT-BR']?.toLowerCase() || '';
-        const bEnName = b.localizedNames['EN-US']?.toLowerCase() || '';
+        const aNiceName = a.nicename?.toLowerCase() || '';
+        const aUniqueName = a.uniquename?.toLowerCase() || '';
+        const bNiceName = b.nicename?.toLowerCase() || '';
+        const bUniqueName = b.uniquename?.toLowerCase() || '';
         
         // Priorizar itens que começam com o termo de busca
-        const aStartsWithPt = aPtName.startsWith(term_lower);
-        const aStartsWithEn = aEnName.startsWith(term_lower);
-        const bStartsWithPt = bPtName.startsWith(term_lower);
-        const bStartsWithEn = bEnName.startsWith(term_lower);
+        const aStartsWithNice = aNiceName.startsWith(cleanSearchTerm);
+        const aStartsWithUnique = aUniqueName.startsWith(cleanSearchTerm);
+        const bStartsWithNice = bNiceName.startsWith(cleanSearchTerm);
+        const bStartsWithUnique = bUniqueName.startsWith(cleanSearchTerm);
         
-        if ((aStartsWithPt || aStartsWithEn) && !(bStartsWithPt || bStartsWithEn)) {
+        if ((aStartsWithNice || aStartsWithUnique) && !(bStartsWithNice || bStartsWithUnique)) {
           return -1;
         }
-        if (!(aStartsWithPt || aStartsWithEn) && (bStartsWithPt || bStartsWithEn)) {
+        if (!(aStartsWithNice || aStartsWithUnique) && (bStartsWithNice || bStartsWithUnique)) {
           return 1;
         }
         
         // Se ambos começam ou nenhum começa, ordenar por relevância
-        const aRelevance = Math.max(
-          aPtName.includes(term_lower) ? aPtName.indexOf(term_lower) : Infinity,
-          aEnName.includes(term_lower) ? aEnName.indexOf(term_lower) : Infinity
+        const aRelevance = Math.min(
+          aNiceName.includes(cleanSearchTerm) ? aNiceName.indexOf(cleanSearchTerm) : Infinity,
+          aUniqueName.includes(cleanSearchTerm) ? aUniqueName.indexOf(cleanSearchTerm) : Infinity
         );
-        const bRelevance = Math.max(
-          bPtName.includes(term_lower) ? bPtName.indexOf(term_lower) : Infinity,
-          bEnName.includes(term_lower) ? bEnName.indexOf(term_lower) : Infinity
+        const bRelevance = Math.min(
+          bNiceName.includes(cleanSearchTerm) ? bNiceName.indexOf(cleanSearchTerm) : Infinity,
+          bUniqueName.includes(cleanSearchTerm) ? bUniqueName.indexOf(cleanSearchTerm) : Infinity
         );
+        
+        // Se a relevância for igual, ordenar por tier
+        if (aRelevance === bRelevance) {
+          return (a.tier || 0) - (b.tier || 0);
+        }
         
         return aRelevance - bRelevance;
       })
@@ -166,13 +172,6 @@ export const searchItems = async (searchTerm: string, limit: number = 10, enchan
   }
 };
 
-/**
- * Busca os preços dos itens selecionados
- * 
- * @param items Lista de IDs de itens
- * @param locations Lista de localizações
- * @returns Lista de preços
- */
 export const fetchItemPrices = async (
   items: string[], 
   locations: string[] = ['Bridgewatch'],

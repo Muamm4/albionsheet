@@ -16,7 +16,8 @@ Route::get('/auth/google', [GoogleAuthController::class, 'login'])->name('auth.g
 Route::get('/auth/google/callback', [GoogleAuthController::class, 'callback'])->name('auth.google.callback');
     
 
-// API routes para o novo formato
+
+Route::get('/api/albion/items/list', [AlbionController::class, 'getItemListDataJson'])->name('api.albion.items.list');
 Route::get('/api/albion/item/{itemId}', [AlbionController::class, 'getItemDetails'])->name('api.albion.item');
 Route::get('/api/albion/crafting/{itemId}', [AlbionController::class, 'getCraftingInfo'])->name('api.albion.crafting');
 Route::get('/api/albion/craftable/{itemId}', [AlbionController::class, 'getItemsToCraft'])->name('api.albion.craftable');

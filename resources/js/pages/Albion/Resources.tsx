@@ -59,6 +59,7 @@ export default function Resources() {
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [activeTab, setActiveTab] = useState<string>('all');
   const [activeSubcategory, setActiveSubcategory] = useState<string>('all');
+  const [activeEnchantmentLevel, setActiveEnchantmentLevel] = useState<string>('all');
 
   useEffect(() => {
     fetchResources();
@@ -98,6 +99,7 @@ export default function Resources() {
 
   // Extrair subcategorias únicas dos recursos
   const uniqueSubcategories = useMemo(() => {
+    console.log(resources)
     const subcategories = resources
       .map(resource => resource.shop_subcategory1)
       .filter((value, index, self) => 
@@ -115,6 +117,10 @@ export default function Resources() {
       
       // Filtro por subcategoria
       if (activeSubcategory !== 'all' && resource.shop_subcategory1 !== activeSubcategory) {
+        return false;
+      }
+
+      if (activeEnchantmentLevel !== 'all' && resource.enchantment_level !== parseInt(activeEnchantmentLevel, 10)) {
         return false;
       }
       
@@ -384,9 +390,21 @@ export default function Resources() {
                     <TabsTrigger value="all">Todas</TabsTrigger>
                     {uniqueSubcategories.map(subcategory => (
                       <TabsTrigger key={subcategory} value={subcategory}>
-                        {subcategory}
+                        {subcategory.charAt(0).toUpperCase() + subcategory.slice(1)}
                       </TabsTrigger>
                     ))}
+                  </TabsList>
+                </Tabs>
+              </div>
+              <div className="flex items-center mb-2">
+                <span className="text-sm font-medium mr-2">Enchantamento:</span>
+                <Tabs defaultValue="all" value={activeEnchantmentLevel} onValueChange={setActiveEnchantmentLevel}>
+                  <TabsList>
+                    <TabsTrigger value="all">Todos</TabsTrigger>
+                    <TabsTrigger value="1">1</TabsTrigger>
+                    <TabsTrigger value="2">2</TabsTrigger>
+                    <TabsTrigger value="3">3</TabsTrigger>
+                    <TabsTrigger value="4">4</TabsTrigger>
                   </TabsList>
                 </Tabs>
               </div>

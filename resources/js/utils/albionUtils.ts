@@ -320,7 +320,6 @@ export const applyEnchantmentLevel = (baseItemId: string, level: number): string
  */
 export const ALBION_CITIES = [
   'Bridgewatch', 
-  'Brecilien',
   'Caerleon', 
   'Fort Sterling', 
   'Lymhurst', 

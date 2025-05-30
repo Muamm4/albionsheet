@@ -78,10 +78,19 @@ class AlbionController extends Controller
         return Inertia::render('Albion/Resources');
     }
 
+    /**
+     * Retorna a lista de itens do Albion Online em formato JSON com cache
+     * 
+     * @return \Illuminate\Http\JsonResponse
+     */
     public function getItemListDataJson()
     {
-        $items = Item::whereNot('uniquename', 'like', '%UNIQUE%')->whereNot('uniquename', 'like', '%SKIN%')->get();
-        return response()->json($items);
+        return Cache::remember('albion_item_list', 86400, function () {
+            $items = Item::whereNot('uniquename', 'like', '%UNIQUE%')
+                      ->whereNot('uniquename', 'like', '%SKIN%')
+                      ->get();
+            return response()->json($items);
+        });
     }
     
     /**
@@ -116,6 +125,8 @@ class AlbionController extends Controller
                     'nicename' => $resource->nicename,
                     'tier' => $resource->tier,
                     'enchantment_level' => $resource->enchantment_level,
+                    'shop_category' => $resource->shop_category,
+                    'shop_subcategory1' => $resource->shop_subcategory1,
                     'prices' => []
                 ];
                 
@@ -135,6 +146,9 @@ class AlbionController extends Controller
                         $maxCity = '';
                         
                         foreach ($normalQuality['cities'] as $cityData) {
+                            if ($cityData['city'] === 'Brecilien') {
+                                continue;
+                            }
                             $sellPrice = $cityData['sell_price_min'] > 0 ? $cityData['sell_price_min'] : null;
                             
                             if ($sellPrice) {

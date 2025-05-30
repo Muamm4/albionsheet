@@ -69,11 +69,129 @@ class AlbionController extends Controller
     {
         return Inertia::render('Albion/BlackMarket');
     }
+    
+    /**
+     * Renderiza a página de recursos do Albion Online
+     */
+    public function resources()
+    {
+        return Inertia::render('Albion/Resources');
+    }
 
     public function getItemListDataJson()
     {
-        $items = Item::all();
+        $items = Item::whereNot('uniquename', 'like', '%UNIQUE%')->whereNot('uniquename', 'like', '%SKIN%')->get();
         return response()->json($items);
+    }
+    
+    /**
+     * Retorna a lista de recursos do Albion Online
+     */
+    public function getResourcesData(Request $request)
+    {
+        try {
+            // Buscar todos os itens da categoria 'resources'
+            $resources = Item::where('shop_category', 'resources')
+                ->whereNot('uniquename', 'like', '%UNIQUE%')
+                ->whereNot('uniquename', 'like', '%SKIN%')
+                ->get();
+            
+            if ($resources->isEmpty()) {
+                return response()->json([]);
+            }
+            
+            // Obter os uniquenames dos recursos
+            $resourceIds = $resources->pluck('uniquename')->toArray();
+            
+            // Buscar preços para todos os recursos em todas as cidades
+            $prices = $this->priceService->fetchPrices($resources, false);
+            
+            // Processar os dados para o formato necessário para a tabela
+            $processedData = [];
+            
+            foreach ($resources as $resource) {
+                $resourceData = [
+                    'id' => $resource->id,
+                    'uniquename' => $resource->uniquename,
+                    'nicename' => $resource->nicename,
+                    'tier' => $resource->tier,
+                    'enchantment_level' => $resource->enchantment_level,
+                    'prices' => []
+                ];
+                
+                // Encontrar os preços deste recurso
+                $resourcePrices = collect($prices)->where('item_id', $resource->uniquename)->first();
+                
+                if ($resourcePrices) {
+                    // Pegar a qualidade normal (1)
+                    $normalQuality = collect($resourcePrices['qualities'])->where('quality', 1)->first();
+                    
+                    if ($normalQuality) {
+                        $cityPrices = [];
+                        $cityPriceDates = [];
+                        $minPrice = PHP_INT_MAX;
+                        $maxPrice = 0;
+                        $minCity = '';
+                        $maxCity = '';
+                        
+                        foreach ($normalQuality['cities'] as $cityData) {
+                            $sellPrice = $cityData['sell_price_min'] > 0 ? $cityData['sell_price_min'] : null;
+                            
+                            if ($sellPrice) {
+                                $cityPrices[$cityData['city']] = $sellPrice;
+                                $cityPriceDates[$cityData['city']] = $cityData['sell_price_min_date'];
+                                
+                                // Atualizar preço mínimo e máximo
+                                if ($sellPrice < $minPrice) {
+                                    $minPrice = $sellPrice;
+                                    $minCity = $cityData['city'];
+                                }
+                                
+                                if ($sellPrice > $maxPrice) {
+                                    $maxPrice = $sellPrice;
+                                    $maxCity = $cityData['city'];
+                                }
+                            } else {
+                                $cityPrices[$cityData['city']] = null;
+                                $cityPriceDates[$cityData['city']] = null;
+                            }
+                        }
+                        
+                        // Calcular oportunidade de flipping
+                        $flippingData = null;
+                        if ($minPrice < PHP_INT_MAX && $maxPrice > 0 && $minPrice < $maxPrice) {
+                            $profit = $maxPrice - $minPrice;
+                            $profitPercentage = ($profit / $minPrice) * 100;
+                            
+                            $flippingData = [
+                                'buy_city' => $minCity,
+                                'buy_price' => $minPrice,
+                                'sell_city' => $maxCity,
+                                'sell_price' => $maxPrice,
+                                'profit' => $profit,
+                                'profit_percentage' => round($profitPercentage, 2)
+                            ];
+                        }
+                        
+                        $resourceData['prices'] = $cityPrices;
+                        $resourceData['price_dates'] = $cityPriceDates;
+                        $resourceData['min_price'] = $minPrice < PHP_INT_MAX ? $minPrice : null;
+                        $resourceData['max_price'] = $maxPrice > 0 ? $maxPrice : null;
+                        $resourceData['min_city'] = $minCity;
+                        $resourceData['max_city'] = $maxCity;
+                        $resourceData['flipping'] = $flippingData;
+                    }
+                }
+                
+                $processedData[] = $resourceData;
+            }
+            
+            return response()->json($processedData);
+            
+        } catch (\Exception $e) {
+            Log::error("Erro ao buscar dados de recursos: " . $e->getMessage());
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
     }
 
 

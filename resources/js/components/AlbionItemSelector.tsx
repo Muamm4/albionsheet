@@ -27,7 +27,7 @@ export default function AlbionItemSelector({ onItemSelect, placeholder = 'Digite
   const [searchTerm, setSearchTerm] = useState('');
   const [suggestions, setSuggestions] = useState<AlbionItem[]>([]);
   const [loading, setLoading] = useState(false);
-  const [enchantmentLevel, setEnchantmentLevel] = useState<string>("0");
+  const [enchantmentLevel, setEnchantmentLevel] = useState<string>("all");
   const [selectedTier, setSelectedTier] = useState<string>("0");
   const suggestionsRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -42,7 +42,9 @@ export default function AlbionItemSelector({ onItemSelect, placeholder = 'Digite
     setLoading(true);
     try {
       // Buscar itens base primeiro
-      const baseItems = await searchItems(term, 20, parseInt(enchantmentLevel, 10), parseInt(selectedTier, 10));
+      const enchantLevel = enchantmentLevel === 'all' ? 0 : parseInt(enchantmentLevel, 10);
+      const tierLevel = selectedTier === '0' ? 0 : parseInt(selectedTier, 10);
+      const baseItems = await searchItems(term, 20, enchantLevel, tierLevel);
       
       setSuggestions(baseItems);
     } catch (error) {
@@ -127,6 +129,7 @@ export default function AlbionItemSelector({ onItemSelect, placeholder = 'Digite
             <SelectValue placeholder="Encantamento" />
           </SelectTrigger>
           <SelectContent>
+            <SelectItem value="all">Todos</SelectItem>
             <SelectItem value="0">Nível 0</SelectItem>
             <SelectItem value="1">Nível 1</SelectItem>
             <SelectItem value="2">Nível 2</SelectItem>

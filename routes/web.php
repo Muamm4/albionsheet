@@ -1,13 +1,11 @@
 <?php
 
 use App\Http\Controllers\AlbionController;
-use App\Http\Controllers\GoogleAuthController;
+use App\Http\Controllers\Auth\GoogleAuthController;
 use App\Http\Controllers\IndexController;
-use App\Models\User;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
-use Laravel\Socialite\Facades\Socialite;
+
 
 Route::get('/', [IndexController::class,'index'])->name('home');
 
@@ -21,10 +19,7 @@ Route::get('/api/albion/items/list', [AlbionController::class, 'getItemListDataJ
 Route::get('/api/albion/item/{itemId}', [AlbionController::class, 'getItemDetails'])->name('api.albion.item');
 Route::get('/api/albion/crafting/{itemId}', [AlbionController::class, 'getCraftingInfo'])->name('api.albion.crafting');
 Route::get('/api/albion/craftable/{itemId}', [AlbionController::class, 'getItemsToCraft'])->name('api.albion.craftable');
-
-Route::get('/albion/favorites', [AlbionController::class, 'favorites'])->name('albion.favorites');
-Route::get('/albion/calculator', [AlbionController::class, 'calculator'])->name('albion.calculator');
-Route::get('/albion/black-market', [AlbionController::class, 'blackMarket'])->name('albion.black-market');
+Route::get('/api/albion/resources', [AlbionController::class, 'getResourcesData'])->name('api.albion.resources');
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dashboard', function () {
@@ -39,6 +34,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/favorites', 'favorites')->name('favorites');
         Route::get('/calculator', 'calculator')->name('calculator');
         Route::get('/black-market', 'blackMarket')->name('black-market');
+        Route::get('/resources', 'resources')->name('resources');
     });
 });
 

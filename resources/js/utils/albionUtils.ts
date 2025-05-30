@@ -82,15 +82,19 @@ export const searchItems = async (searchTerm: string, limit: number = 10, enchan
     const cleanSearchTerm = searchTerm.toLowerCase();
     
     // Filtrar os itens que correspondem ao termo de busca, tier e encantamento
-    const filtered = items
-      // Filtramos apenas itens base (sem encantamento no ID)
-      .filter((item: any) => !item.uniquename.includes('@'))
-      .filter((item: any) => {
-        const niceName = item.nicename?.toLowerCase() || '';
-        const uniqueName = item.uniquename?.toLowerCase() || '';
-        
-        // Verificar se o item contém o termo de busca (condição obrigatória)
-        const matchesTerm = niceName.includes(cleanSearchTerm) || uniqueName.includes(cleanSearchTerm);
+    var filtered = items;
+    if (enchantmentLevel > 0) {
+      filtered = filtered.filter((item: any) => getEnchantmentLevel(item.uniquename) === enchantmentLevel);
+    }
+    if (tier > 0) {
+      filtered = filtered.filter((item: any) => getItemTier(item.uniquename) === tier);
+    }
+    filtered = filtered.filter((item: any) => {
+      const niceName = item.nicename?.toLowerCase() || '';
+      const uniqueName = item.uniquename?.toLowerCase() || '';
+      
+      // Verificar se o item contém o termo de busca (condição obrigatória)
+      const matchesTerm = niceName.includes(cleanSearchTerm) || uniqueName.includes(cleanSearchTerm);
         if (!matchesTerm) return false; // Se não corresponde ao termo de busca, já descarta
         
         // Verificar tier se especificado
@@ -127,41 +131,60 @@ export const searchItems = async (searchTerm: string, limit: number = 10, enchan
         };
       })
       .sort((a: AlbionItem, b: AlbionItem) => {
-        // Ordenar primeiro pelos itens que começam com o termo de busca
-        const aNiceName = a.nicename?.toLowerCase() || '';
-        const aUniqueName = a.uniquename?.toLowerCase() || '';
-        const bNiceName = b.nicename?.toLowerCase() || '';
-        const bUniqueName = b.uniquename?.toLowerCase() || '';
+        // Ordenar primeiro por tier
+        const aTier = a.tier || 0;
+        const bTier = b.tier || 0;
         
-        // Priorizar itens que começam com o termo de busca
-        const aStartsWithNice = aNiceName.startsWith(cleanSearchTerm);
-        const aStartsWithUnique = aUniqueName.startsWith(cleanSearchTerm);
-        const bStartsWithNice = bNiceName.startsWith(cleanSearchTerm);
-        const bStartsWithUnique = bUniqueName.startsWith(cleanSearchTerm);
-        
-        if ((aStartsWithNice || aStartsWithUnique) && !(bStartsWithNice || bStartsWithUnique)) {
-          return -1;
-        }
-        if (!(aStartsWithNice || aStartsWithUnique) && (bStartsWithNice || bStartsWithUnique)) {
-          return 1;
+        if (aTier !== bTier) {
+          return aTier - bTier; // Ordem crescente de tier
         }
         
-        // Se ambos começam ou nenhum começa, ordenar por relevância
-        const aRelevance = Math.min(
-          aNiceName.includes(cleanSearchTerm) ? aNiceName.indexOf(cleanSearchTerm) : Infinity,
-          aUniqueName.includes(cleanSearchTerm) ? aUniqueName.indexOf(cleanSearchTerm) : Infinity
-        );
-        const bRelevance = Math.min(
-          bNiceName.includes(cleanSearchTerm) ? bNiceName.indexOf(cleanSearchTerm) : Infinity,
-          bUniqueName.includes(cleanSearchTerm) ? bUniqueName.indexOf(cleanSearchTerm) : Infinity
-        );
+        // Extrair o nome base sem prefixo de tier e sem encantamento
+        // Ex: T4_CAPE@2 -> CAPE
+        const aBaseNameWithoutTier = a.uniquename?.replace(/^T\d+_/, '') || '';
+        const bBaseNameWithoutTier = b.uniquename?.replace(/^T\d+_/, '') || '';
         
-        // Se a relevância for igual, ordenar por tier
-        if (aRelevance === bRelevance) {
-          return (a.tier || 0) - (b.tier || 0);
+        // Remover o encantamento para comparar os nomes base
+        const aBaseName = aBaseNameWithoutTier.split('@')[0];
+        const bBaseName = bBaseNameWithoutTier.split('@')[0];
+        
+        // Se os nomes base são diferentes
+        if (aBaseName !== bBaseName) {
+            // Verificar se um nome é prefixo do outro (ex: CAPE é prefixo de CAPEITEM)
+            if (aBaseName.startsWith(bBaseName) && aBaseName !== bBaseName) {
+                return 1; // a é mais longo e começa com b, então a vem depois
+            }
+            if (bBaseName.startsWith(aBaseName) && aBaseName !== bBaseName) {
+                return -1; // b é mais longo e começa com a, então b vem depois
+            }
+            
+            // Se não há relação de prefixo, ordenar por nome
+            return aBaseName.localeCompare(bBaseName);
         }
         
-        return aRelevance - bRelevance;
+        // Se os nomes base são iguais, verificar se um tem encantamento e o outro não
+        const aHasEnchant = a.uniquename?.includes('@') || false;
+        const bHasEnchant = b.uniquename?.includes('@') || false;
+        
+        if (aHasEnchant !== bHasEnchant) {
+            return aHasEnchant ? 1 : -1; // Item sem encantamento vem primeiro
+        }
+        
+        // Se ambos têm ou não têm encantamento, ordenar por comprimento do uniquename
+        // Isso garante que nomes mais curtos venham antes (T4_CAPE antes de T4_CAPEITEM)
+        const aUniqueName = a.uniquename || '';
+        const bUniqueName = b.uniquename || '';
+        
+        // Se os comprimentos são diferentes e nenhum tem encantamento, ou ambos têm
+        if (!aHasEnchant && !bHasEnchant && aUniqueName.length !== bUniqueName.length) {
+            return aUniqueName.length - bUniqueName.length;
+        }
+        
+        // Por fim, ordenar por nível de encantamento (menor para maior)
+        const aEnchantLevel = a.enchantment_level || 0;
+        const bEnchantLevel = b.enchantment_level || 0;
+        
+        return aEnchantLevel - bEnchantLevel;
       })
       .slice(0, limit);
     
@@ -297,6 +320,7 @@ export const applyEnchantmentLevel = (baseItemId: string, level: number): string
  */
 export const ALBION_CITIES = [
   'Bridgewatch', 
+  'Brecilien',
   'Caerleon', 
   'Fort Sterling', 
   'Lymhurst', 

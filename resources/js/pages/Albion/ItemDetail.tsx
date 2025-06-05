@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link, router } from '@inertiajs/react';
+import { Link, router, usePage } from '@inertiajs/react';
 import {
   formatPrice,
   getQualityName,
@@ -42,16 +42,37 @@ interface Material {
   qualities: Quality[];
 }
 
+interface CraftingAnalysis {
+  city: string;
+  quality: number;
+  material_cost: number;
+  material_details: {
+    id: number;
+    uniquename: string;
+    nicename: string;
+    amount: number;
+    unit_price: number;
+    total_cost: number;
+  }[];
+  sell_price: number;
+  profit: number;
+  profit_margin: number;
+  is_profitable: boolean;
+  updated_at: string;
+}
+
 interface AlbionItemData {
   id: number;
   uniquename: string;
   nicename: string;
   qualities: Quality[];
   materials: Material[];
+  crafting_analysis: CraftingAnalysis[];
+  crafting_requirements?: any;
   // Outros campos do modelo
-  craftitem1?: string;
-  craftitem1_amount?: string;
-  focus?: string;
+  tier?: number;
+  enchantment_level?: number;
+  description?: string;
   shopcategory?: string;
   shopsubcategory1?: string;
   slottype?: string;
@@ -59,22 +80,33 @@ interface AlbionItemData {
 }
 
 // Componente principal
-export default function ItemDetail({ item }: { item: AlbionItemData }) {
+export default function ItemDetail({ item }: { item?: AlbionItemData }) {
+  const { props } = usePage();
+  const itemData = item || (props as any).item;
+  
   const [selectedCity, setSelectedCity] = useState<string>('Bridgewatch');
   const [selectedQuality, setSelectedQuality] = useState<number>(1);
   const [profitMargin, setProfitMargin] = useState<number>(0);
   const [profitAmount, setProfitAmount] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string>('');
 
-  console.log(selectedCity)
-  console.log(item)
+  useEffect(() => {
+    if (!itemData) {
+      setError('Item não encontrado. Verifique o ID do item.');
+    }
+  }, [itemData]);
+
+  // Log para debug
+  console.log('Item data:', itemData);
+  
   // Calcular o custo total dos materiais
   const calculateTotalMaterialCost = (): number => {
-    if (!item?.materials || item.materials.length === 0) return 0;
+    if (!itemData?.materials || itemData.materials.length === 0) return 0;
 
     let totalCost = 0;
 
-    for (const material of item.materials) {
+    for (const material of itemData.materials) {
       // Buscar o preço do material na cidade selecionada e com a qualidade selecionada
       const materialQuality = material.qualities.find(q => q.quality === 1);
       if (!materialQuality) continue;
@@ -91,7 +123,7 @@ export default function ItemDetail({ item }: { item: AlbionItemData }) {
 
   // Obter o preço de venda mínimo do item na cidade selecionada
   const getMinSellPrice = (): number => {
-    const quality = item?.qualities?.find(q => q.quality === selectedQuality);
+    const quality = itemData?.qualities?.find(q => q.quality === selectedQuality);
     if (!quality) return 0;
 
     const cityData = quality.cities.find(c => c.city === selectedCity);
@@ -193,7 +225,7 @@ export default function ItemDetail({ item }: { item: AlbionItemData }) {
   }, [selectedCity, selectedQuality]);
 
   // Se o item não for encontrado
-  if (!item) {
+  if (!itemData) {
     return (
       <AlbionLayout
         title="Item não encontrado"
@@ -211,7 +243,7 @@ export default function ItemDetail({ item }: { item: AlbionItemData }) {
 
   return (
     <AlbionLayout
-      title={item.nicename || item.uniquename}
+      title={itemData.nicename || itemData.uniquename}
       description="Detalhes, preços e informações de crafting"
       customBreadcrumbs={[
         {
@@ -219,8 +251,8 @@ export default function ItemDetail({ item }: { item: AlbionItemData }) {
           href: '/albion',
         },
         {
-          title: item.nicename || item.uniquename,
-          href: `/albion/item/${item.uniquename}`
+          title: itemData.nicename || itemData.uniquename,
+          href: `/albion/item/${itemData.uniquename}`
         }
       ]}
     >
@@ -228,8 +260,8 @@ export default function ItemDetail({ item }: { item: AlbionItemData }) {
         <div className="flex flex-col items-start gap-6 md:flex-row">
           <div className="flex h-32 w-32 items-center justify-center rounded-lg border border-border bg-muted p-2">
             <img
-              src={getItemIconUrl(getBaseItemId(item.uniquename), 128)}
-              alt={item.nicename || item.uniquename}
+              src={getItemIconUrl(getBaseItemId(itemData.uniquename), 128)}
+              alt={itemData.nicename || itemData.uniquename}
               className="h-full w-full object-contain"
               onError={(e) => {
                 (e.target as HTMLImageElement).src = 'https://render.albiononline.com/v1/item/T4_BAG.png?size=128&quality=1';
@@ -239,14 +271,14 @@ export default function ItemDetail({ item }: { item: AlbionItemData }) {
 
           <div className="space-y-2">
             <h1 className="text-2xl font-bold">
-              {item.nicename || item.uniquename}
-              {getEnchantmentLevel(item.uniquename) > 0 && (
+              {itemData.nicename || itemData.uniquename}
+              {getEnchantmentLevel(itemData.uniquename) > 0 && (
                 <span className="ml-2 text-sm font-medium text-blue-500">
-                  Encantamento Nível {getEnchantmentLevel(item.uniquename)}
+                  Encantamento Nível {getEnchantmentLevel(itemData.uniquename)}
                 </span>
               )}
             </h1>
-            <p className="text-sm text-muted-foreground">ID: {item.uniquename}</p>
+            <p className="text-sm text-muted-foreground">ID: {itemData.uniquename}</p>
 
             <div className="mt-4 flex flex-wrap gap-2">
               <Button
@@ -292,7 +324,7 @@ export default function ItemDetail({ item }: { item: AlbionItemData }) {
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
             {[1, 2, 3, 4, 5].map((quality) => {
               // Verificar se existem dados para esta qualidade
-              const hasQualityData = item.qualities.some(q => q.quality === quality);
+              const hasQualityData = itemData.qualities.some(q => q.quality === quality);
 
               return (
                 <Button
@@ -323,7 +355,7 @@ export default function ItemDetail({ item }: { item: AlbionItemData }) {
             <div className="rounded-lg border border-border p-6">
               <h3 className="mb-4 text-lg font-medium">Resumo de Crafting</h3>
 
-              {item.materials && item.materials.length > 0 ? (
+              {itemData.materials && itemData.materials.length > 0 ? (
                 <div className="space-y-4">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Custo Total de Materiais:</span>
@@ -345,11 +377,11 @@ export default function ItemDetail({ item }: { item: AlbionItemData }) {
                     <span className="font-medium">{getQualityName(selectedQuality)}</span>
                   </div>
 
-                  {item.qualities.length > 0 && (
+                  {itemData.qualities.length > 0 && (
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Última Atualização:</span>
                       <div className="text-right text-xs text-muted-foreground">
-                        {getLatestPriceDate(item.qualities.find(q => q.quality === selectedQuality) || item.qualities[0])}
+                        {getLatestPriceDate(itemData.qualities.find(q => q.quality === selectedQuality) || itemData.qualities[0])}
                       </div>
                     </div>
                   )}
@@ -381,11 +413,11 @@ export default function ItemDetail({ item }: { item: AlbionItemData }) {
             <div className="rounded-lg border border-border p-6">
               <h3 className="mb-4 text-lg font-medium">Materiais Necessários</h3>
 
-              {!item.materials || item.materials.length === 0 ? (
+              {!itemData.materials || itemData.materials.length === 0 ? (
                 <p className="text-muted-foreground">Este item não pode ser craftado ou não possui informações de crafting disponíveis.</p>
               ) : (
                 <div className="space-y-4">
-                  {item.materials.map((material, index) => (
+                  {itemData.materials.map((material, index) => (
                     <div key={`${material.uniquename}-${index}`} className="flex items-center justify-between">
                       <div className="flex items-center">
                         <img
@@ -439,6 +471,72 @@ export default function ItemDetail({ item }: { item: AlbionItemData }) {
 
         <Separator />
 
+        {/* Seção de Análise de Lucratividade por Cidade */}
+        {itemData.crafting_analysis && itemData.crafting_analysis.length > 0 && (
+          <>
+            <div className="space-y-6">
+              <HeadingSmall
+                title="Análise de Lucratividade por Cidade"
+                description="Comparativo de lucratividade em diferentes cidades e qualidades"
+              />
+
+              <div className="rounded-md border border-border">
+                <div className="overflow-x-auto">
+                  <table className="w-full divide-y divide-border">
+                    <thead>
+                      <tr className="bg-muted">
+                        <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Cidade</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Qualidade</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Custo Materiais</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Preço Venda</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Lucro</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Margem</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border bg-background">
+                      {itemData.crafting_analysis
+                        .filter(analysis => analysis.quality === selectedQuality)
+                        .map((analysis, index) => {
+                          // Determinar a classe CSS para o lucro
+                          const profitClass = analysis.is_profitable 
+                            ? analysis.profit_margin > 20 ? "text-green-500" : "text-yellow-500"
+                            : "text-red-500";
+                          
+                          // Formatar a data
+                          const formattedDate = analysis.updated_at
+                            ? new Date(analysis.updated_at).toLocaleString('pt-BR', {
+                                day: '2-digit',
+                                month: '2-digit',
+                                year: 'numeric'
+                              })
+                            : '-';
+                          
+                          return (
+                            <tr key={`${analysis.city}-${index}`} className="hover:bg-muted/50">
+                              <td className="whitespace-nowrap px-6 py-4 text-sm text-muted-foreground">{analysis.city}</td>
+                              <td className="whitespace-nowrap px-6 py-4 text-sm text-muted-foreground">{getQualityName(analysis.quality)}</td>
+                              <td className="whitespace-nowrap px-6 py-4 text-sm text-muted-foreground">{formatPrice(analysis.material_cost)}</td>
+                              <td className="whitespace-nowrap px-6 py-4 text-sm text-muted-foreground">{formatPrice(analysis.sell_price)}</td>
+                              <td className={`whitespace-nowrap px-6 py-4 text-sm font-medium ${profitClass}`}>{formatPrice(analysis.profit)}</td>
+                              <td className={`whitespace-nowrap px-6 py-4 text-sm font-medium ${profitClass}`}>{analysis.profit_margin.toFixed(2)}%</td>
+                              <td className="whitespace-nowrap px-6 py-4 text-sm">
+                                <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${analysis.is_profitable ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                                  {analysis.is_profitable ? 'Lucrativo' : 'Prejuízo'}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+            <Separator />
+          </>
+        )}
+
         <div className="space-y-6">
           <HeadingSmall
             title="Preços por Cidade"
@@ -457,7 +555,7 @@ export default function ItemDetail({ item }: { item: AlbionItemData }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border bg-background">
-                  {item.qualities
+                  {itemData.qualities
                     .filter(quality => quality.quality === selectedQuality)
                     .flatMap(quality =>
                       quality.cities.map((cityData, index) => {

@@ -42,7 +42,7 @@ export default function AlbionItemSelector({ onItemSelect, placeholder = 'Digite
     setLoading(true);
     try {
       // Buscar itens base primeiro
-      const enchantLevel = enchantmentLevel === 'all' ? 0 : parseInt(enchantmentLevel, 10);
+      const enchantLevel = enchantmentLevel === 'all' ? -1 : parseInt(enchantmentLevel, 10);
       const tierLevel = selectedTier === '0' ? 0 : parseInt(selectedTier, 10);
       const baseItems = await searchItems(term, 20, enchantLevel, tierLevel);
       

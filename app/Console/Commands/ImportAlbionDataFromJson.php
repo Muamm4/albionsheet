@@ -139,66 +139,6 @@ class ImportAlbionDataFromJson extends Command
             $bar->finish();
             $this->newLine(2);
             $this->info("Itens processados com sucesso.");
-            
-        //    $itemsObject = collect($items);
-        //    $this->info("Total de itens processados: " . $itemsObject->count());
-
-        //     $categories = $itemsObject->pluck('shop_category')->unique()->values()->all();
-        //     foreach($categories as $category){
-        //         $this->info("Categoria: " . $category);
-        //     }
-
-        //     $this->newLine(2);
-        //     $this->info("Itens sem categoria:");
-        //     $itemsWithoutCategory = $itemsObject->where('shop_category', 'sem categoria')->pluck('uniquename')->values()->all();
-        //     foreach($itemsWithoutCategory as $item){
-        //         $this->info("Item sem categoria: " . $item);
-        //     }
-
-        //     $this->newLine(2);
-        //     $this->info("Categorias de itens processados: " . implode(', ', $categories));
-
-
-        //     $this->newLine(2);
-        //     $this->info("Itens sem tier:");
-        //     $itemsWithoutTier = $itemsObject->where('tier', 'sem tier')->pluck('uniquename')->values()->all();
-        //     foreach($itemsWithoutTier as $item){
-        //         $this->info("Item sem tier: " . $item);
-        //     }
-
-        //     $this->newLine(2);
-        //     $this->info("Itens aleatórios por categoria:");
-        //     $categories = $itemsObject->pluck('shop_category')->unique()->values()->all();
-        //     foreach($categories as $category){
-        //         $item = $itemsObject->where('shop_category', $category)->random();
-        //         $this->info("Categoria: " . $category);
-        //         $this->info("Item: " . $item['uniquename']);
-        //         $this->info("  - Tier: " . $item['tier']);
-        //         $this->info("  - Requisitos de fabricação: " . json_encode($item['craftingrequirements']));
-        //         $this->info("  - Subcategoria 1: " . $item['shop_subcategory1']);
-        //         $this->newLine(2);
-        //     }
-
-            // Terceiro passo: atualizar preços
-            $this->info('Atualizando preços dos itens...');
-
-            // Obter todos os uniquenames dos itens processados
-            $uniqueNames = array_keys($items);
-
-            // Atualizar preços em lotes para evitar sobrecarga da API
-            $batchSize = 200;
-            $batches = array_chunk($uniqueNames, $batchSize);
-
-            $bar = $this->output->createProgressBar(count($batches));
-            $bar->start();
-
-            foreach ($batches as $batch) {
-                $this->priceService->updateItemsPrices($batch);
-                $bar->advance();
-
-                // Pequena pausa para não sobrecarregar a API
-                sleep(1);
-            }
 
             $bar->finish();
             $this->newLine(2);

@@ -74,16 +74,55 @@ export const searchItems = async (searchTerm: string, limit: number = 10, enchan
   }
 
   try {
-    // Buscar os dados dos itens do arquivo JSON
-    const response = await axios.get('../api/albion/items/list');
-    const items = response.data;
+    // Constantes para o cache
+    const CACHE_KEY = 'albion_items_cache1';
+    const CACHE_TIMESTAMP_KEY = 'albion_items_cache_timestamp1';
+    const CACHE_DURATION = 1000 * 60 * 60 * 24; // 24 horas (mais adequado para dados que mudam pouco)
 
+    // Buscar os dados dos itens (do cache ou da API)
+    let items: any[] = [];
+    
+    try {
+      // Verificar se há cache válido
+      const cachedItems = localStorage.getItem(CACHE_KEY);
+      const cacheTimestamp = localStorage.getItem(CACHE_TIMESTAMP_KEY);
+      
+      if (cachedItems && cacheTimestamp) {
+        const timestamp = parseInt(cacheTimestamp, 10);
+        if (Date.now() - timestamp < CACHE_DURATION) {
+          items = JSON.parse(cachedItems);
+          console.log('Usando dados de itens do cache local');
+        }
+      }
+    } catch (error) {
+      console.warn('Erro ao acessar cache local:', error);
+    }
+    
+    // Se não encontrou cache válido, buscar da API
+    if (items.length === 0) {
+      console.log('Buscando dados de itens da API...');
+      const response = await axios.get('../api/albion/items/list');
+      items = response.data || [];
+      
+      // Armazenar o cache
+      try {
+        localStorage.setItem(CACHE_KEY, JSON.stringify(items));
+        localStorage.setItem(CACHE_TIMESTAMP_KEY, Date.now().toString());
+        console.log('Dados armazenados em cache local');
+      } catch (storageError) {
+        console.warn('Erro ao salvar cache local:', storageError);
+      }
+    }
+    
     // Limpar o termo de busca para comparações
     const cleanSearchTerm = searchTerm.toLowerCase();
     
     // Filtrar os itens que correspondem ao termo de busca, tier e encantamento
     var filtered = items;
-    if (enchantmentLevel > 0) {
+    console.log("Enchantment level: " + enchantmentLevel)
+    console.log("Tier: " + tier)
+    if (enchantmentLevel >= 0) {
+      console.log("Enchantment level: " + enchantmentLevel)
       filtered = filtered.filter((item: any) => getEnchantmentLevel(item.uniquename) === enchantmentLevel);
     }
     if (tier > 0) {
@@ -326,3 +365,37 @@ export const ALBION_CITIES = [
   'Martlock', 
   'Thetford'
 ];
+
+/**
+ * Retorna o nome formatado do tier
+ * 
+ * @param tier Número do tier (4-8)
+ * @returns Nome formatado do tier (ex: Tier 4)
+ */
+export const getTierName = (tier: number): string => {
+  if (!tier || tier < 1) return 'Todos';
+  return `Tier ${tier}`;
+};
+
+/**
+ * Retorna o nome do nível de encantamento
+ * 
+ * @param level Nível de encantamento (0-4)
+ * @returns Nome do encantamento (ex: Encantamento 2)
+ */
+export const getEnchantmentName = (level: number): string => {
+  if (level < 0) return 'Todos';
+  if (level === 0) return 'Sem Encantamento';
+  return `Encantamento ${level}`;
+};
+
+/**
+ * Obtém a URL da imagem do item
+ * 
+ * @param uniquename Nome único do item
+ * @param size Tamanho da imagem
+ * @returns URL da imagem do item
+ */
+export const getItemImageUrl = (uniquename: string, size: number = 100): string => {
+  return getItemIconUrl(uniquename, size, 1);
+};

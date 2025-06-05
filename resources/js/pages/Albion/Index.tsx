@@ -22,7 +22,6 @@ export default function AlbionIndex() {
   const [selectedItems, setSelectedItems] = useState<AlbionItem[]>([]);
   const [prices, setPrices] = useState<ItemPrice[]>([]);
   const [loading, setLoading] = useState(false);
-  const [selectedCity, setSelectedCity] = useState<string>('Bridgewatch');
 
   // Breadcrumbs para navegação
   const breadcrumbs = [
@@ -58,7 +57,8 @@ export default function AlbionIndex() {
     setLoading(true);
     try {
       const itemIds = selectedItems.map(item => item.uniquename);
-      const priceData = await fetchItemPrices(itemIds, [selectedCity]);
+      // Buscar preços de todas as cidades
+      const priceData = await fetchItemPrices(itemIds, ALBION_CITIES);
       setPrices(priceData);
     } catch (error) {
       console.error('Erro ao buscar preços:', error);
@@ -133,26 +133,7 @@ export default function AlbionIndex() {
 
         <Separator />
 
-        <div className="space-y-6">
-          <HeadingSmall 
-            title="Selecione a Cidade" 
-            description="Escolha a cidade onde deseja verificar os preços" 
-          />
-          
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
-            {ALBION_CITIES.map((city) => (
-              <Button
-                key={city}
-                onClick={() => setSelectedCity(city)}
-                variant={selectedCity === city ? "default" : "outline"}
-                size="sm"
-                className="w-full"
-              >
-                {city}
-              </Button>
-            ))}
-          </div>
-        </div>
+
 
         <div className="flex justify-center">
           <Button
@@ -173,7 +154,7 @@ export default function AlbionIndex() {
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
-                <span>Consultar Preços em {selectedCity}</span>
+                <span>Consultar Preços</span>
               </>
             )}
           </Button>
@@ -195,98 +176,116 @@ export default function AlbionIndex() {
                     <thead>
                       <tr className="bg-muted">
                         <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Item</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Cidade</th>
                         <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Qualidade</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Preço de Venda</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Preço de Compra</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Atualizado</th>
+                        {ALBION_CITIES.map(city => (
+                          <th key={city} className="px-6 py-3 text-center text-xs font-medium uppercase tracking-wider text-muted-foreground">{city}</th>
+                        ))}
                         <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Ações</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border bg-background">
-                      {prices.map((price, index) => {
-                        console.log(price);
-                        const item = selectedItems.find(item => item.uniquename === price.item_id);
+                      {/* Agrupar preços por item e qualidade */}
+                      {selectedItems.map(selectedItem => {
+                        // Para cada item selecionado, vamos mostrar uma linha por qualidade
+                        // Primeiro, encontrar todas as qualidades disponíveis para este item
+                        const itemPrices = prices.filter(price => price.item_id === selectedItem.uniquename);
+                        const qualities = [...new Set(itemPrices.map(price => price.quality))];
                         
-                        // Formatar a data mais recente
-                        const dates = [
-                          price.sell_price_min_date,
-                          price.sell_price_max_date,
-                          price.buy_price_min_date,
-                          price.buy_price_max_date
-                        ].filter(Boolean);
-                        
-                        // Ordenar datas do mais recente para o mais antigo
-                        const sortedDates = dates.sort((a, b) => 
-                          new Date(b || '').getTime() - new Date(a || '').getTime()
-                        );
-                        
-                        const mostRecentDate = sortedDates.length > 0 ? sortedDates[0] : null;
-                        const formattedDate = mostRecentDate 
-                          ? new Date(mostRecentDate).toLocaleString('pt-BR', {
-                              day: '2-digit',
-                              month: '2-digit',
-                              year: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            })
-                          : '';
-                        
-                        return (
-                          <tr key={`${price.item_id}-${price.city}-${price.quality}-${index}`} className="hover:bg-muted/50">
-                            <td className="whitespace-nowrap px-6 py-4 text-sm font-medium">
-                              <div className="flex items-center">
-                                <img 
-                                  src={getItemIconUrl(price.item_id, 40, price.quality)} 
-                                  alt={item?.nicename || price.item_id} 
-                                  className="mr-3 h-8 w-8 rounded object-contain"
-                                  onError={(e) => {
-                                    (e.target as HTMLImageElement).src = 'https://render.albiononline.com/v1/item/' + price.item_id + '.png?size=40&quality=' + price.quality;
-                                  }}
-                                />
-                                <div>
+                        return qualities.map(quality => {
+                          // Formatar o nome da qualidade
+                          const qualityName = getQualityName(quality);
+                          
+                          return (
+                            <tr key={`${selectedItem.uniquename}-${quality}`} className="hover:bg-muted/50">
+                              <td className="whitespace-nowrap px-6 py-4 text-sm font-medium">
+                                <div className="flex items-center">
+                                  <img 
+                                    src={getItemIconUrl(selectedItem.uniquename, 40, quality)} 
+                                    alt={selectedItem.nicename || selectedItem.uniquename} 
+                                    className="mr-3 h-8 w-8 rounded object-contain"
+                                    onError={(e) => {
+                                      (e.target as HTMLImageElement).src = 'https://render.albiononline.com/v1/item/' + selectedItem.uniquename + '.png?size=40&quality=' + quality;
+                                    }}
+                                  />
                                   <div>
-                                    {item?.nicename || price.item_id}
-                                    {getEnchantmentLevel(price.item_id) > 0 && (
-                                      <span className="ml-1 text-xs font-medium text-blue-500">
-                                        (Encantamento Nível {getEnchantmentLevel(price.item_id)})
-                                      </span>
-                                    )}
+                                    <div>
+                                      {selectedItem.nicename || selectedItem.uniquename}
+                                      {getEnchantmentLevel(selectedItem.uniquename) > 0 && (
+                                        <span className="ml-1 text-xs font-medium text-blue-500">
+                                          (Encantamento Nível {getEnchantmentLevel(selectedItem.uniquename)})
+                                        </span>
+                                      )}
+                                    </div>
                                   </div>
-                                  <div className="text-xs text-muted-foreground">{item?.nicename}</div>
                                 </div>
-                              </div>
-                            </td>
-                            <td className="whitespace-nowrap px-6 py-4 text-sm text-muted-foreground">{price.city}</td>
-                            <td className="whitespace-nowrap px-6 py-4 text-sm text-muted-foreground">
-                              {getQualityName(price.quality)}
-                            </td>
-                            <td className="whitespace-nowrap px-6 py-4 text-sm text-muted-foreground">
-                              {price.sell_price_min === price.sell_price_max
-                                ? formatPrice(price.sell_price_min)
-                                : `${formatPrice(price.sell_price_min)} ~ ${formatPrice(price.sell_price_max)}`}
-                            </td>
-                            <td className="whitespace-nowrap px-6 py-4 text-sm text-muted-foreground">
-                              {price.buy_price_min === price.buy_price_max
-                                ? formatPrice(price.buy_price_min)
-                                : `${formatPrice(price.buy_price_min)} ~ ${formatPrice(price.buy_price_max)}`}
-                            </td>
-                            <td className="whitespace-nowrap px-6 py-4 text-sm text-muted-foreground">
-                              {formattedDate}
-                            </td>
-                            <td className="whitespace-nowrap px-6 py-4 text-sm">
-                              <Button
-                                asChild
-                                variant="outline"
-                                size="sm"
-                              >
-                                <Link href={`/albion/item/${price.item_id}`}>
-                                  Detalhes
-                                </Link>
-                              </Button>
-                            </td>
-                          </tr>
-                        );
+                              </td>
+                              <td className="whitespace-nowrap px-6 py-4 text-sm text-muted-foreground">
+                                {qualityName}
+                              </td>
+                              
+                              {/* Renderizar uma coluna para cada cidade */}
+                              {ALBION_CITIES.map(city => {
+                                // Encontrar o preço para esta cidade e qualidade
+                                const cityPrice = itemPrices.find(p => p.city === city && p.quality === quality);
+                                
+                                // Formatar a data mais recente se houver preço
+                                let formattedDate = '';
+                                if (cityPrice) {
+                                  const dates = [
+                                    cityPrice.sell_price_min_date,
+                                    cityPrice.sell_price_max_date
+                                  ].filter(Boolean);
+                                  
+                                  // Ordenar datas do mais recente para o mais antigo
+                                  const sortedDates = dates.sort((a, b) => 
+                                    new Date(b || '').getTime() - new Date(a || '').getTime()
+                                  );
+                                  
+                                  const mostRecentDate = sortedDates.length > 0 ? sortedDates[0] : null;
+                                  formattedDate = mostRecentDate 
+                                    ? new Date(mostRecentDate).toLocaleString('pt-BR', {
+                                        day: '2-digit',
+                                        month: '2-digit',
+                                        hour: '2-digit',
+                                        minute: '2-digit'
+                                      })
+                                    : '';
+                                }
+                                
+                                return (
+                                  <td key={city} className="whitespace-nowrap px-6 py-4 text-sm text-center text-muted-foreground">
+                                    {cityPrice ? (
+                                      <>
+                                        <div className="font-medium">
+                                          {cityPrice.sell_price_min === cityPrice.sell_price_max
+                                            ? formatPrice(cityPrice.sell_price_min)
+                                            : `${formatPrice(cityPrice.sell_price_min)}`}
+                                        </div>
+                                        <div className="text-xs text-muted-foreground mt-1">
+                                          {formattedDate}
+                                        </div>
+                                      </>
+                                    ) : (
+                                      <span className="text-xs">N/A</span>
+                                    )}
+                                  </td>
+                                );
+                              })}
+                              
+                              <td className="whitespace-nowrap px-6 py-4 text-sm">
+                                <Button
+                                  asChild
+                                  variant="outline"
+                                  size="sm"
+                                >
+                                  <Link href={`/albion/item/${selectedItem.uniquename}`}>
+                                    Detalhes
+                                  </Link>
+                                </Button>
+                              </td>
+                            </tr>
+                          );
+                        });
                       })}
                     </tbody>
                   </table>

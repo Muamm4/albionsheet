@@ -23,6 +23,11 @@ const mainNavItems: NavItem[] = [
         href: '/albion/resources',
         icon: Database,
     },
+    {
+        title: 'Equipamentos',
+        href: '/albion/equipment',
+        icon: Sword,
+    },
 ];
 
 const footerNavItems: NavItem[] = [

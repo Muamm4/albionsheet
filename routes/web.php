@@ -20,6 +20,7 @@ Route::get('/api/albion/item/{itemId}', [AlbionController::class, 'getItemDetail
 Route::get('/api/albion/crafting/{itemId}', [AlbionController::class, 'getCraftingInfo'])->name('api.albion.crafting');
 Route::get('/api/albion/craftable/{itemId}', [AlbionController::class, 'getItemsToCraft'])->name('api.albion.craftable');
 Route::get('/api/albion/resources', [AlbionController::class, 'getResourcesData'])->name('api.albion.resources');
+Route::get('/api/albion/equipment', [AlbionController::class, 'getEquipmentData'])->name('api.albion.equipment');
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dashboard', function () {
@@ -35,6 +36,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/calculator', 'calculator')->name('calculator');
         Route::get('/black-market', 'blackMarket')->name('black-market');
         Route::get('/resources', 'resources')->name('resources');
+        Route::get('/equipment', 'equipment')->name('equipment');
     });
 });
 

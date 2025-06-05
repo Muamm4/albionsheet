@@ -17,7 +17,7 @@ class AlbionPriceService
 {
     private Client $httpClient;
     private string $apiBaseUrl = 'https://west.albion-online-data.com/api/v2/stats/prices/';
-    
+
     public function __construct()
     {
         $this->httpClient = new Client([
@@ -25,7 +25,7 @@ class AlbionPriceService
             'http_errors' => false
         ]);
     }
-    
+
     /**
      * Busca preços para uma lista de itens na API do Albion Online
      * 
@@ -34,50 +34,52 @@ class AlbionPriceService
      * @param int $cacheTtl Tempo em minutos para expiração do cache
      * @return array Dados organizados por item_id, quality e city
      */
-    public function fetchPrices(array|Collection $items, bool $useCache = true, int $cacheTtl = 30): array
+    public function fetchPrices(array|Collection $items, bool $useCache = true, int $cacheTtl = 2): array
     {
         try {
             // Extrair uniquenames se for uma coleção de objetos Item
             $itemIds = $items instanceof Collection
                 ? $items->pluck('uniquename')->toArray()
                 : $items;
-                
+
             if (empty($itemIds)) {
                 return [];
             }
-            
+
             // Converter array para string separada por vírgulas
             $itemIdsString = implode(',', $itemIds);
-            
+
             // Gerar uma chave de cache única baseada nos itens solicitados
             $cacheKey = 'albion_prices_' . md5($itemIdsString);
-            
+
             // Verificar se deve usar o cache e se os dados estão em cache
             if ($useCache && Cache::has($cacheKey)) {
                 Log::info('Usando dados em cache para os itens: ' . $itemIdsString);
                 return Cache::get($cacheKey);
             }
-            
+
             // Fazer requisição à API
             $response = $this->httpClient->request('GET', $this->apiBaseUrl . $itemIdsString);
-            
+
             if ($response->getStatusCode() !== 200) {
                 Log::error('Erro ao buscar preços na API do Albion Online', [
                     'status_code' => $response->getStatusCode(),
                     'items' => $itemIdsString
                 ]);
                 return [];
-            }
-            
+            }  
+
             $data = json_decode($response->getBody()->getContents(), true);
             $organizedData = $this->organizeData($data);
-            
+
+            $this->savePricesToDatabase($organizedData);
+
             // Armazenar os dados em cache
             if ($useCache) {
                 Cache::put($cacheKey, $organizedData, now()->addMinutes($cacheTtl));
                 Log::info('Dados armazenados em cache para os itens: ' . $itemIdsString);
             }
-            
+
             return $organizedData;
         } catch (\Exception $e) {
             Log::error('Exceção ao buscar preços na API do Albion Online', [
@@ -87,7 +89,7 @@ class AlbionPriceService
             return [];
         }
     }
-    
+
     /**
      * Organiza os dados da API em uma estrutura mais adequada
      * 
@@ -97,12 +99,12 @@ class AlbionPriceService
     private function organizeData(array $data): array
     {
         $organizedData = [];
-        
+
         foreach ($data as $item) {
             $itemId = $item['item_id'];
             $quality = $item['quality'];
             $city = $item['city'];
-            
+
             // Inicializar a estrutura se não existir
             if (!isset($organizedData[$itemId])) {
                 $organizedData[$itemId] = [
@@ -110,7 +112,7 @@ class AlbionPriceService
                     'qualities' => []
                 ];
             }
-            
+
             // Inicializar a qualidade se não existir
             if (!isset($organizedData[$itemId]['qualities'][$quality])) {
                 $organizedData[$itemId]['qualities'][$quality] = [
@@ -118,7 +120,7 @@ class AlbionPriceService
                     'cities' => []
                 ];
             }
-            
+
             // Adicionar dados da cidade
             $organizedData[$itemId]['qualities'][$quality]['cities'][$city] = [
                 'sell_price_min' => $item['sell_price_min'],
@@ -131,14 +133,14 @@ class AlbionPriceService
                 'buy_price_max_date' => $item['buy_price_max_date']
             ];
         }
-        
+
         // Converter arrays associativos para arrays indexados
         foreach ($organizedData as &$item) {
             $item['qualities'] = array_values($item['qualities']);
-            
+
             foreach ($item['qualities'] as &$quality) {
                 $quality['cities'] = array_values(array_map(
-                    function($cityName, $cityData) {
+                    function ($cityName, $cityData) {
                         return array_merge(['city' => $cityName], $cityData);
                     },
                     array_keys($quality['cities']),
@@ -146,10 +148,10 @@ class AlbionPriceService
                 ));
             }
         }
-        
+
         return array_values($organizedData);
     }
-    
+
     /**
      * Salva os preços no banco de dados
      * 
@@ -161,17 +163,21 @@ class AlbionPriceService
         foreach ($organizedData as $itemData) {
             $uniquename = $itemData['item_id'];
             $item = Item::where('uniquename', $uniquename)->first();
-            
+
             if (!$item) {
                 continue;
             }
-            
+
             foreach ($itemData['qualities'] as $qualityData) {
-                $quality = $qualityData['quality'];
-                
+                if ($item->shop_category === 'resources' && $qualityData['quality'] != 1) {
+                    continue;
+                } else {
+                    $quality = $qualityData['quality'];
+                }
+
                 foreach ($qualityData['cities'] as $cityData) {
                     $city = $cityData['city'];
-                    
+
                     ItemPrice::updateOrCreate(
                         [
                             'item_id' => $item->id,
@@ -193,7 +199,7 @@ class AlbionPriceService
             }
         }
     }
-    
+
     /**
      * Atualiza os preços para um item específico
      * 
@@ -204,14 +210,14 @@ class AlbionPriceService
     public function updateItemPrices(Item $item, bool $useCache = true): array
     {
         $prices = $this->fetchPrices([$item->uniquename], $useCache);
-        
+
         if (!empty($prices)) {
             $this->savePricesToDatabase($prices);
         }
-        
+
         return $prices;
     }
-    
+
     /**
      * Atualiza os preços para uma lista de itens
      * 
@@ -222,11 +228,11 @@ class AlbionPriceService
     public function updateItemsPrices(array|Collection $items, bool $useCache = true): array
     {
         $prices = $this->fetchPrices($items, $useCache);
-        
+
         if (!empty($prices)) {
             $this->savePricesToDatabase($prices);
         }
-        
+
         return $prices;
     }
 }

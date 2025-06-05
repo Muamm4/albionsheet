@@ -275,7 +275,7 @@ export const fetchItemPrices = async (
  */
 export const formatPrice = (price: number): string => {
   if (!price) return 'N/A';
-  return new Intl.NumberFormat('pt-BR').format(price);
+  return new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(price);
 };
 
 /**

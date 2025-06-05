@@ -12,72 +12,8 @@ import AlbionLayout from '@/layouts/albion/layout';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import HeadingSmall from '@/components/heading-small';
+import { AlbionItemData, Quality, City, Material } from '@/types';
 
-// Interfaces para a nova estrutura de dados
-interface City {
-  city: string;
-  sell_price_min: number;
-  sell_price_min_date: string;
-  sell_price_max: number;
-  sell_price_max_date: string;
-  buy_price_min: number;
-  buy_price_min_date: string;
-  buy_price_max: number;
-  buy_price_max_date: string;
-}
-
-interface Quality {
-  quality: number;
-  cities: City[];
-}
-
-interface Material {
-  uniquename: string;
-  nicename: string;
-  amount: number;
-  max_return_amount: number;
-  shopcategory?: string;
-  shopsubcategory1?: string;
-  slottype?: string;
-  qualities: Quality[];
-}
-
-interface CraftingAnalysis {
-  city: string;
-  quality: number;
-  material_cost: number;
-  material_details: {
-    id: number;
-    uniquename: string;
-    nicename: string;
-    amount: number;
-    unit_price: number;
-    total_cost: number;
-  }[];
-  sell_price: number;
-  profit: number;
-  profit_margin: number;
-  is_profitable: boolean;
-  updated_at: string;
-}
-
-interface AlbionItemData {
-  id: number;
-  uniquename: string;
-  nicename: string;
-  qualities: Quality[];
-  materials: Material[];
-  crafting_analysis: CraftingAnalysis[];
-  crafting_requirements?: any;
-  // Outros campos do modelo
-  tier?: number;
-  enchantment_level?: number;
-  description?: string;
-  shopcategory?: string;
-  shopsubcategory1?: string;
-  slottype?: string;
-  [key: string]: any; // Para outros campos dinâmicos
-}
 
 // Componente principal
 export default function ItemDetail({ item }: { item?: AlbionItemData }) {
@@ -90,16 +26,13 @@ export default function ItemDetail({ item }: { item?: AlbionItemData }) {
   const [profitAmount, setProfitAmount] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
+  const [premium, setPremium] = useState<boolean>(false);
 
   useEffect(() => {
     if (!itemData) {
       setError('Item não encontrado. Verifique o ID do item.');
     }
   }, [itemData]);
-
-  // Log para debug
-  console.log('Item data:', itemData);
-  
   // Calcular o custo total dos materiais
   const calculateTotalMaterialCost = (): number => {
     if (!itemData?.materials || itemData.materials.length === 0) return 0;
@@ -108,11 +41,10 @@ export default function ItemDetail({ item }: { item?: AlbionItemData }) {
 
     for (const material of itemData.materials) {
       // Buscar o preço do material na cidade selecionada e com a qualidade selecionada
-      const materialQuality = material.qualities.find(q => q.quality === 1);
+      const materialQuality = material.qualities.find((q: Quality) => q.quality === 1);
       if (!materialQuality) continue;
-      const cityData = materialQuality.cities.find(c => c.city === selectedCity);
+      const cityData = materialQuality.cities.find((c: City) => c.city === selectedCity);
       if (!cityData) continue;
-      console.log(cityData.sell_price_min)
       // Usar o preço de compra máximo como referência para o custo
       const materialPrice = cityData.sell_price_min || 0;
       totalCost += materialPrice * material.amount;
@@ -123,11 +55,11 @@ export default function ItemDetail({ item }: { item?: AlbionItemData }) {
 
   // Obter o preço de venda mínimo do item na cidade selecionada
   const getMinSellPrice = (): number => {
-    const quality = itemData?.qualities?.find(q => q.quality === selectedQuality);
+    const quality = itemData?.qualities?.find((q: Quality) => q.quality === selectedQuality);
     if (!quality) return 0;
 
-    const cityData = quality.cities.find(c => c.city === selectedCity);
-    return cityData?.sell_price_min || 0;
+    const cityData = quality.cities.find((c: City) => c.city === selectedCity);
+    return cityData?.sell_price_min * (premium ? 0.935 : 0.975) || 0;
   };
 
   // Função para obter a classe CSS baseada na margem de lucro
@@ -144,7 +76,7 @@ export default function ItemDetail({ item }: { item?: AlbionItemData }) {
 
   // Função para obter a data mais recente de atualização de preço
   const getLatestPriceDate = (quality: Quality): string => {
-    const cityData = quality.cities.find(c => c.city === selectedCity);
+    const cityData = quality.cities.find((c: City) => c.city === selectedCity);
 
     if (cityData) {
       const dates = [
@@ -162,12 +94,14 @@ export default function ItemDetail({ item }: { item?: AlbionItemData }) {
       const mostRecentDate = sortedDates.length > 0 ? sortedDates[0] : null;
 
       if (mostRecentDate) {
+        // Converter de UTC para UTC-3 (Horário de Brasília)
         return `Atualizado em ${new Date(mostRecentDate).toLocaleString('pt-BR', {
           day: '2-digit',
           month: '2-digit',
           year: 'numeric',
           hour: '2-digit',
-          minute: '2-digit'
+          minute: '2-digit',
+          timeZone: 'America/Sao_Paulo' // UTC-3 (Horário de Brasília)
         })}`;
       }
     }
@@ -185,16 +119,10 @@ export default function ItemDetail({ item }: { item?: AlbionItemData }) {
   // Forçar recalculação quando a cidade ou qualidade mudam
   useEffect(() => {
     try {
-      console.log(`Cidade selecionada alterada para: ${selectedCity}`);
-      console.log(`Qualidade selecionada alterada para: ${selectedQuality}`);
-
       // Obter o preço de venda mínimo do item na cidade selecionada
       const sellPrice = getMinSellPrice();
-
       // Calcular o custo total dos materiais
       const totalCost = calculateTotalMaterialCost();
-
-      console.log(`Preço de venda: ${sellPrice}, Custo total: ${totalCost}`);
 
       // Atualizar valores calculados
       setCalculatedValues({
@@ -212,7 +140,6 @@ export default function ItemDetail({ item }: { item?: AlbionItemData }) {
         const margin = (profit / totalCost) * 100;
         setProfitMargin(margin);
 
-        console.log(`Lucro: ${profit}, Margem: ${margin}%`);
       } else {
         setProfitAmount(0);
         setProfitMargin(0);
@@ -381,7 +308,7 @@ export default function ItemDetail({ item }: { item?: AlbionItemData }) {
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Última Atualização:</span>
                       <div className="text-right text-xs text-muted-foreground">
-                        {getLatestPriceDate(itemData.qualities.find(q => q.quality === selectedQuality) || itemData.qualities[0])}
+                        {getLatestPriceDate(itemData.qualities.find((q: Quality) => q.quality === selectedQuality) || itemData.qualities[0])}
                       </div>
                     </div>
                   )}
@@ -411,13 +338,23 @@ export default function ItemDetail({ item }: { item?: AlbionItemData }) {
             </div>
 
             <div className="rounded-lg border border-border p-6">
-              <h3 className="mb-4 text-lg font-medium">Materiais Necessários</h3>
+              <div className="flex justify-between">
+                <h3 className="mb-4 text-lg font-medium">Materiais Necessários</h3>
+                <Button
+                  onClick={() => setPremium(!premium)}
+                  variant={premium ? "default" : "outline"}
+                size="sm"
+                className="w-full"
+              >
+                {premium ? "Premium" : "Normal"}
+              </Button>
+              </div>
 
               {!itemData.materials || itemData.materials.length === 0 ? (
                 <p className="text-muted-foreground">Este item não pode ser craftado ou não possui informações de crafting disponíveis.</p>
               ) : (
                 <div className="space-y-4">
-                  {itemData.materials.map((material, index) => (
+                  {itemData.materials.map((material: Material, index: number) => (
                     <div key={`${material.uniquename}-${index}`} className="flex items-center justify-between">
                       <div className="flex items-center">
                         <img
@@ -445,11 +382,11 @@ export default function ItemDetail({ item }: { item?: AlbionItemData }) {
                         <span className="ml-2 text-sm font-medium">
                           {formatPrice(
                             (() => {
-                              const quality = material.qualities.find(q => q.quality === 1);
+                              const quality = material.qualities.find((q: Quality) => q.quality === 1);
                               if (!quality) return 0;
 
-                              const cityData = quality.cities.find(c => c.city === selectedCity);
-                              return cityData?.buy_price_max || 0;
+                              const cityData = quality.cities.find((c: City) => c.city === selectedCity);
+                              return (cityData?.sell_price_min || 0) * (premium ? 0.935 : 0.975);
                             })()
                           )}
                         </span>
@@ -462,6 +399,20 @@ export default function ItemDetail({ item }: { item?: AlbionItemData }) {
                   <div className="flex justify-between">
                     <span className="font-medium">Total:</span>
                     <span className="font-medium">{formatPrice(calculatedValues.totalCost)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="font-medium">Fee (2.5%):</span>
+                    <span className="font-medium">{formatPrice(calculatedValues.totalCost * 0.025)}</span>
+                  </div>
+                  {premium && (
+                    <div className="flex justify-between">
+                      <span className="font-medium">Fee (4.%):</span>
+                      <span className="font-medium">{formatPrice(calculatedValues.totalCost * 0.04)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between">
+                    <span className="font-medium">Total sell Price:</span>
+                    <span className="font-medium">{formatPrice(calculatedValues.totalCost * (premium ? 0.935 : 0.975))}</span>
                   </div>
                 </div>
               )}
@@ -496,8 +447,8 @@ export default function ItemDetail({ item }: { item?: AlbionItemData }) {
                     </thead>
                     <tbody className="divide-y divide-border bg-background">
                       {itemData.crafting_analysis
-                        .filter(analysis => analysis.quality === selectedQuality)
-                        .map((analysis, index) => {
+                        .filter((analysis: CraftingAnalysis) => analysis.quality === selectedQuality)
+                        .map((analysis: CraftingAnalysis, index: number) => {
                           // Determinar a classe CSS para o lucro
                           const profitClass = analysis.is_profitable 
                             ? analysis.profit_margin > 20 ? "text-green-500" : "text-yellow-500"

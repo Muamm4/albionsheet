@@ -19,6 +19,11 @@ const mainNavItems: NavItem[] = [
         icon: Sword,
     },
     {
+        title: 'Black Market',
+        href: '/albion/black-market',
+        icon: MapIcon,
+    },
+    {
         title: 'Recursos',
         href: '/albion/resources',
         icon: Database,

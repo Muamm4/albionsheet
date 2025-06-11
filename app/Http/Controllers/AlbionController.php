@@ -99,6 +99,84 @@ class AlbionController extends Controller
     }
     
     /**
+     * Retorna oportunidades de flipping entre cidades e Black Market
+     * 
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function getBlackMarketOpportunities(Request $request): JsonResponse
+    {
+        try {
+            // Obter todos os preços do Black Market
+            $blackMarketPrices = ItemPrice::where('city', City::BlackMarket)
+                ->whereNotNull('buy_price_min')
+                ->where('buy_price_min', '>', 0)
+                ->with('item')
+                ->get();
+                
+            if ($blackMarketPrices->isEmpty()) {
+                return response()->json([], 200);
+            }
+            
+            $opportunities = [];
+            
+            foreach ($blackMarketPrices as $blackMarketPrice) {
+                $item = $blackMarketPrice->item;
+                if (!$item) continue;
+                
+                // Buscar os preços deste item em todas as cidades (exceto Black Market)
+                $cityPrices = ItemPrice::where('item_id', $item->id)
+                    ->where('quality', $blackMarketPrice->quality)
+                    ->where('city', '!=', City::BlackMarket)
+                    ->whereNotNull('sell_price_min')
+                    ->where('sell_price_min', '>', 0)
+                    ->get();
+                    
+                foreach ($cityPrices as $cityPrice) {
+                    // Calcular o lucro potencial
+                    $profit = $blackMarketPrice->buy_price_min - $cityPrice->sell_price_min;
+                    $profitPercentage = $cityPrice->sell_price_min > 0 
+                        ? ($profit / $cityPrice->sell_price_min) * 100 
+                        : 0;
+                        
+                    // Apenas incluir se houver lucro
+                    if ($profit > 0) {
+                        $opportunities[] = [
+                            'id' => $cityPrice->id,
+                            'item_id' => $item->id,
+                            'uniquename' => $item->uniquename,
+                            'nicename' => $item->nicename,
+                            'tier' => $item->tier,
+                            'enchantment_level' => $item->enchantment_level,
+                            'quality' => $cityPrice->quality->value,
+                            'city' => $cityPrice->city->value,
+                            'sell_price_min' => $cityPrice->sell_price_min,
+                            'buy_price_min' => $cityPrice->buy_price_min,
+                            'black_market_price' => $blackMarketPrice->buy_price_min,
+                            'profit' => $profit,
+                            'profit_percentage' => $profitPercentage,
+                            'updated_at' => $cityPrice->updated_at->format('Y-m-d H:i:s')
+                        ];
+                    }
+                }
+            }
+            
+            // Ordenar por margem de lucro (percentual) em ordem decrescente
+            usort($opportunities, function($a, $b) {
+                return $b['profit_percentage'] <=> $a['profit_percentage'];
+            });
+            
+            return response()->json($opportunities, 200);
+        } catch (\Exception $e) {
+            Log::error("Erro ao buscar oportunidades do Black Market: " . $e->getMessage(), [
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json(['error' => 'Erro ao processar dados do Black Market'], 500);
+        }
+    }
+    
+    /**
  * Renderiza a página de recursos do Albion Online
  */
 public function resources()
